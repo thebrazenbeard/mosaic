@@ -45,3 +45,5 @@ See:
 - [Architecture V0](docs/ARCHITECTURE_V0.md)
 - [Research Plan](docs/RESEARCH_PLAN.md)
 - [Terminology](docs/TERMS.md)
+- [P0 Residency Feasibility](experiments/MOSAIC_P0_RESIDENCY_V1.md)
+- [P1 Cross-Specialist Continuity](experiments/MOSAIC_P1_CONTINUITY_V1.md)
