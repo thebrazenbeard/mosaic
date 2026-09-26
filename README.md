@@ -39,7 +39,15 @@ It is also not HC-Brain. Concepts may later be borrowed where useful, but Mosaic
 
 ## Current status
 
-**Research / architecture seed.** No implementation or training recipe is canonical yet.
+**Research architecture plus bounded executable research harnesses.**
+
+`main` now contains deterministic Python harnesses under `runtime/` with tests under `tests/` for:
+
+- analytical residency accounting;
+- state handoff / continuity protocol mechanics;
+- the frozen P1 comparison cases across RESET, MOSAIC STATE, FULL HISTORY, and ORDINARY RETRIEVAL conditions.
+
+Those harnesses make parts of the research protocol executable; they are not a trained Mosaic model, do not demonstrate real specialist unloading/swapping on an accelerator, and do not establish a Mosaic P1 pass. The model partition architecture, training recipe, and empirical capability claims remain research subjects.
 
 See:
 
