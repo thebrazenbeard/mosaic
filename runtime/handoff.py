@@ -5,7 +5,14 @@ import json
 from typing import Iterable
 
 
-CONDITIONS = ("RESET", "MOSAIC_STATE", "FULL_HISTORY", "ORDINARY_RETRIEVAL")
+CONDITIONS = (
+    "RESET",
+    "MOSAIC_STATE",
+    "FULL_HISTORY",
+    "ORDINARY_RETRIEVAL",
+    "MULTI_RESOLUTION_STATE",
+    "MULTI_RESOLUTION_REHYDRATE",
+)
 
 
 class HandoffProtocolError(ValueError):
@@ -99,6 +106,48 @@ def _full_history(events: tuple[StateEvent, ...]) -> list[dict[str, object]]:
     ]
 
 
+def _multi_resolution_state(events: tuple[StateEvent, ...]) -> dict[str, object]:
+    by_key: dict[str, StateEvent] = {}
+    for event in sorted(events, key=lambda item: item.revision):
+        by_key[event.key] = event
+    return {
+        "schema_id": "MOSAIC_MULTI_RESOLUTION_STATE_V1",
+        "current_index": {
+            key: [event.event_id, event.revision]
+            for key, event in sorted(by_key.items())
+        },
+    }
+
+
+def _rehydrate_current_event(
+    events: tuple[StateEvent, ...],
+    compact_state: dict[str, object],
+    query_key: str,
+) -> StateEvent | None:
+    current_index = compact_state["current_index"]
+    if not isinstance(current_index, dict):
+        raise HandoffProtocolError("multi-resolution current_index must be an object")
+    locator = current_index.get(query_key)
+    if locator is None:
+        return None
+    if (
+        not isinstance(locator, list)
+        or len(locator) != 2
+        or not isinstance(locator[0], str)
+        or not isinstance(locator[1], int)
+    ):
+        raise HandoffProtocolError("multi-resolution locator is malformed")
+    event_id, revision = locator
+    matches = [
+        event
+        for event in events
+        if event.event_id == event_id and event.revision == revision
+    ]
+    if len(matches) != 1:
+        raise HandoffProtocolError("multi-resolution backing locator is not exact")
+    return matches[0]
+
+
 def _ordinary_retrieval(events: tuple[StateEvent, ...], query_key: str) -> dict[str, object]:
     relevant = [event for event in events if event.key == query_key]
     if not relevant:
@@ -117,7 +166,7 @@ def _ordinary_retrieval(events: tuple[StateEvent, ...], query_key: str) -> dict[
 
 
 def _specialist_b_answer(condition: str, payload: object, query_key: str) -> str:
-    if condition == "RESET":
+    if condition in ("RESET", "MULTI_RESOLUTION_STATE"):
         return "UNKNOWN"
     if condition == "MOSAIC_STATE":
         current = payload["current"]  # type: ignore[index]
@@ -143,17 +192,52 @@ def run_case(case: ContinuityCase, condition: str) -> dict[str, object]:
     if condition not in CONDITIONS:
         raise HandoffProtocolError(f"unknown condition: {condition}")
 
+    rehydration_count = 0
+    rehydration_bytes = 0
+    rehydrated_event_ids: list[str] = []
+    backing_state_bytes = 0
+
     if condition == "RESET":
         payload: object = {}
+        answer = _specialist_b_answer(condition, payload, case.query_key)
     elif condition == "MOSAIC_STATE":
         payload = _mosaic_state(case.events)
+        answer = _specialist_b_answer(condition, payload, case.query_key)
     elif condition == "FULL_HISTORY":
         payload = _full_history(case.events)
-    else:
+        answer = _specialist_b_answer(condition, payload, case.query_key)
+    elif condition == "ORDINARY_RETRIEVAL":
         payload = _ordinary_retrieval(case.events, case.query_key)
+        answer = _specialist_b_answer(condition, payload, case.query_key)
+    else:
+        payload = _multi_resolution_state(case.events)
+        backing = _full_history(case.events)
+        backing_state_bytes = len(_encode(backing))
+        if condition == "MULTI_RESOLUTION_STATE":
+            answer = "UNKNOWN"
+        else:
+            event = _rehydrate_current_event(
+                case.events,
+                payload,
+                case.query_key,
+            )
+            if event is None:
+                answer = "UNKNOWN"
+            else:
+                exact_record = {
+                    "event_id": event.event_id,
+                    "family": event.family,
+                    "key": event.key,
+                    "value": event.value,
+                    "revision": event.revision,
+                }
+                exact_bytes = _encode(exact_record)
+                answer = event.value
+                rehydration_count = 1
+                rehydration_bytes = len(exact_bytes)
+                rehydrated_event_ids = [event.event_id]
 
     encoded = _encode(payload)
-    answer = _specialist_b_answer(condition, payload, case.query_key)
     stale_values = {
         event.value
         for event in case.events
@@ -172,6 +256,11 @@ def run_case(case: ContinuityCase, condition: str) -> dict[str, object]:
         "stale_error": stale_error,
         "correction_burden": 0 if correct else 1,
         "payload_bytes": len(encoded),
+        "active_state_bytes": len(encoded),
+        "backing_state_bytes": backing_state_bytes,
+        "rehydration_count": rehydration_count,
+        "rehydration_bytes": rehydration_bytes,
+        "rehydrated_event_ids": rehydrated_event_ids,
     }
 
 
@@ -200,6 +289,18 @@ def run_benchmark(cases: Iterable[ContinuityCase]) -> dict[str, object]:
             "stale_errors": sum(bool(row["stale_error"]) for row in subset),
             "correction_burden": sum(int(row["correction_burden"]) for row in subset),
             "payload_bytes_total": sum(int(row["payload_bytes"]) for row in subset),
+            "active_state_bytes_total": sum(
+                int(row["active_state_bytes"]) for row in subset
+            ),
+            "backing_state_bytes_total": sum(
+                int(row["backing_state_bytes"]) for row in subset
+            ),
+            "rehydration_count": sum(
+                int(row["rehydration_count"]) for row in subset
+            ),
+            "rehydration_bytes_total": sum(
+                int(row["rehydration_bytes"]) for row in subset
+            ),
         }
 
     mosaic = by_condition["MOSAIC_STATE"]
