@@ -36,10 +36,29 @@ class SpecialistResidency:
 
 
 @dataclass(frozen=True, slots=True)
+class SharedStateResidency:
+    active_gpu_bytes: int
+    warm_cpu_bytes: int
+    backing_storage_bytes: int
+
+    def validate(self) -> None:
+        values = (
+            self.active_gpu_bytes,
+            self.warm_cpu_bytes,
+            self.backing_storage_bytes,
+        )
+        if any(value < 0 for value in values):
+            raise ResidencyModelError(
+                "shared state byte counts must be non-negative"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ResidencyEnvelope:
     vram_ceiling_bytes: int
     boot_core_gpu_bytes: int
     specialists: tuple[SpecialistResidency, ...]
+    shared_state: SharedStateResidency | None = None
 
     def validate(self) -> None:
         if self.vram_ceiling_bytes <= 0:
@@ -51,6 +70,12 @@ class ResidencyEnvelope:
             raise ResidencyModelError("specialist_id values must be unique")
         for item in self.specialists:
             item.gpu_bytes()
+        if self.shared_state is not None:
+            if type(self.shared_state) is not SharedStateResidency:
+                raise ResidencyModelError(
+                    "shared_state must be an exact SharedStateResidency"
+                )
+            self.shared_state.validate()
 
 
 def canonical_json_sha256(value: Mapping[str, object]) -> str:
@@ -80,13 +105,18 @@ def evaluate_swap_sequence(
     if not ordered:
         raise ResidencyModelError("swap sequence must not be empty")
 
+    shared = envelope.shared_state or SharedStateResidency(0, 0, 0)
     steps: list[dict[str, object]] = []
     max_resident = 0
     for index, specialist_id in enumerate(ordered):
         specialist = by_id.get(specialist_id)
         if specialist is None:
             raise ResidencyModelError(f"unknown specialist in sequence: {specialist_id}")
-        modeled = envelope.boot_core_gpu_bytes + specialist.gpu_bytes()
+        modeled = (
+            envelope.boot_core_gpu_bytes
+            + shared.active_gpu_bytes
+            + specialist.gpu_bytes()
+        )
         max_resident = max(max_resident, modeled)
         steps.append(
             {
@@ -97,12 +127,19 @@ def evaluate_swap_sequence(
             }
         )
 
-    total_pool = envelope.boot_core_gpu_bytes + sum(
-        item.gpu_bytes() for item in envelope.specialists
+    total_pool = (
+        envelope.boot_core_gpu_bytes
+        + shared.active_gpu_bytes
+        + sum(item.gpu_bytes() for item in envelope.specialists)
     )
     input_subject = {
         "vram_ceiling_bytes": envelope.vram_ceiling_bytes,
         "boot_core_gpu_bytes": envelope.boot_core_gpu_bytes,
+        "shared_state": {
+            "active_gpu_bytes": shared.active_gpu_bytes,
+            "warm_cpu_bytes": shared.warm_cpu_bytes,
+            "backing_storage_bytes": shared.backing_storage_bytes,
+        },
         "specialists": [
             {
                 "specialist_id": item.specialist_id,
@@ -123,6 +160,9 @@ def evaluate_swap_sequence(
         "hardware_measurement_performed": False,
         "input_sha256": canonical_json_sha256(input_subject),
         "vram_ceiling_bytes": envelope.vram_ceiling_bytes,
+        "shared_state_active_gpu_bytes": shared.active_gpu_bytes,
+        "shared_state_warm_cpu_bytes": shared.warm_cpu_bytes,
+        "shared_state_backing_storage_bytes": shared.backing_storage_bytes,
         "total_declared_gpu_parameter_and_runtime_pool_bytes": total_pool,
         "modeled_peak_resident_bytes": max_resident,
         "logical_pool_exceeds_vram_ceiling": total_pool > envelope.vram_ceiling_bytes,

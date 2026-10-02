@@ -84,3 +84,54 @@ class ResidencyModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedStateResidencyTests(unittest.TestCase):
+    def specialist(self, name, weights_gib, kv_mib=128, act_mib=128, work_mib=128):
+        return SpecialistResidency(
+            specialist_id=name,
+            package_bytes=int(weights_gib * GiB),
+            weight_bytes=int(weights_gib * GiB),
+            kv_cache_bytes=kv_mib * MiB,
+            activation_bytes=act_mib * MiB,
+            workspace_bytes=work_mib * MiB,
+        )
+    def test_only_active_shared_state_counts_against_modeled_vram(self):
+        from runtime.residency import SharedStateResidency
+
+        shared = SharedStateResidency(
+            active_gpu_bytes=64 * MiB,
+            warm_cpu_bytes=512 * MiB,
+            backing_storage_bytes=2 * GiB,
+        )
+        env = ResidencyEnvelope(
+            vram_ceiling_bytes=4 * GiB,
+            boot_core_gpu_bytes=256 * MiB,
+            specialists=(self.specialist("code", 2.5),),
+            shared_state=shared,
+        )
+
+        receipt = evaluate_swap_sequence(env, ["code"])
+
+        expected = 256 * MiB + 64 * MiB + env.specialists[0].gpu_bytes()
+        self.assertEqual(receipt["modeled_peak_resident_bytes"], expected)
+        self.assertEqual(receipt["shared_state_active_gpu_bytes"], 64 * MiB)
+        self.assertEqual(receipt["shared_state_warm_cpu_bytes"], 512 * MiB)
+        self.assertEqual(receipt["shared_state_backing_storage_bytes"], 2 * GiB)
+
+    def test_negative_shared_state_bytes_fail_closed(self):
+        from runtime.residency import SharedStateResidency
+
+        env = ResidencyEnvelope(
+            vram_ceiling_bytes=4 * GiB,
+            boot_core_gpu_bytes=0,
+            specialists=(self.specialist("code", 2.0),),
+            shared_state=SharedStateResidency(
+                active_gpu_bytes=-1,
+                warm_cpu_bytes=0,
+                backing_storage_bytes=0,
+            ),
+        )
+
+        with self.assertRaisesRegex(ResidencyModelError, "shared state"):
+            evaluate_swap_sequence(env, ["code"])
