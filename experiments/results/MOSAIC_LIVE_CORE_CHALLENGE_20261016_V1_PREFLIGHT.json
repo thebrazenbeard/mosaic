@@ -1,0 +1,38 @@
+{
+  "case_ids": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10"
+  ],
+  "challenge_quality_split": {
+    "CORRECT": 5,
+    "MISLEADING": 5
+  },
+  "endpoint": {
+    "endpoint": "http://127.0.0.1:18081",
+    "model_id": "qwen3.5-4b-local",
+    "model_identity_cryptographically_verified": false,
+    "reasoning_quality_verified": false,
+    "service_mutated": false,
+    "status": "ENDPOINT_MODEL_ID_ADVERTISED_NOT_BEHAVIOR_VERIFIED"
+  },
+  "frozen_cases_count": 10,
+  "frozen_cases_sha256": "1468947eaafd30a8c7578da1a98adfa453ec9909e250973e70d969d0bfc08c10",
+  "independent_verifier_used_in_inference": false,
+  "model_checkpoint_deployed_or_changed": false,
+  "model_sha256_cryptographically_verified": false,
+  "real_specialist_model_used": false,
+  "running_neural_model": true,
+  "schema": "MOSAIC_LIVE_CORE_CHALLENGE_PREFLIGHT_V1",
+  "source_code_sha256": "4bd40b5294ac33411284cfd364e66268ba8a0dea209684f9b7324c6c12bff8d9",
+  "source_head": "db171894e0d219e05805855e5218f2b5eb688337",
+  "started_at_utc": "2026-10-16T10:14:05.089736+00:00",
+  "status": "LIVE_ENDPOINT_ADVERTISED_EVAL_INPUTS_BOUND"
+}

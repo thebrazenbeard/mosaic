@@ -59,3 +59,4 @@ See:
 - [P1 Cross-Specialist Continuity](experiments/MOSAIC_P1_CONTINUITY_V1.md)
 - [Thinking Core + specialist disagreement protocol (candidate; not neural qualification)](docs/THINKING_CORE_DISAGREEMENT_V1.md)
 - [Local neural Core HTTP adapter (transport candidate; not model qualification)](docs/THINKING_CORE_LOOPBACK_BACKEND_V1.md)
+- [Real Qwen Core / scripted criticism: 6 of 10 versus 6 of 10 (development only)](experiments/MOSAIC_LIVE_CORE_CHALLENGE_OUTCOME_20261016_V1.md)
