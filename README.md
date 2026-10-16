@@ -58,3 +58,4 @@ See:
 - [P0 Residency Feasibility](experiments/MOSAIC_P0_RESIDENCY_V1.md)
 - [P1 Cross-Specialist Continuity](experiments/MOSAIC_P1_CONTINUITY_V1.md)
 - [Thinking Core + specialist disagreement protocol (candidate; not neural qualification)](docs/THINKING_CORE_DISAGREEMENT_V1.md)
+- [Local neural Core HTTP adapter (transport candidate; not model qualification)](docs/THINKING_CORE_LOOPBACK_BACKEND_V1.md)
