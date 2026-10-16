@@ -1,0 +1,8 @@
+experiments/MOSAIC_LIVE_CORE_CHALLENGE_CASES_20261016_V1.json text eol=lf
+experiments/live_core_challenge_v1.py text eol=lf
+experiments/MOSAIC_LIVE_CORE_CHALLENGE_PROTOCOL_20261016_V1.md text eol=lf
+tests/test_live_challenge_protocol.py text eol=lf
+experiments/results/MOSAIC_LIVE_CORE_CHALLENGE_20261016_V1_PREFLIGHT.json text eol=lf
+experiments/results/MOSAIC_LIVE_CORE_CHALLENGE_20261016_V1_RESULTS.jsonl text eol=lf
+experiments/results/MOSAIC_LIVE_CORE_CHALLENGE_20261016_V1_SUMMARY.json text eol=lf
+experiments/MOSAIC_LIVE_CORE_CHALLENGE_OUTCOME_20261016_V1.md text eol=lf

@@ -1,0 +1,105 @@
+{
+  "schema": "MOSAIC_LIVE_CORE_CHALLENGE_CASES_V1",
+  "qualification": "PREDECLARED_DEVELOPMENT_BENCHMARK_NOT_INDEPENDENT_NEURAL_QUALIFICATION",
+  "protocol": {
+    "candidate": "Existing local PreActive Qwen3.5-4B, unchanged base; NeuralThinkingCore strict JSON",
+    "pairing": "Single real Core initial output reused as the baseline and challenged run; no repeat Core initial sample",
+    "challenge": "Exactly one predeclared non-neural scripted specialist objection; ground truth hidden from Core and only used in scorer",
+    "scoring": "Question-proposition true/false label; invalid Core output or no response counts as incorrect; no-dissent cases retain baseline; unverified outcomes not called verified",
+    "interpretation": "Reports wins/losses versus baseline, susceptibility to misleading objection, and disagreement handling; not genuine learned specialist or independent certification",
+    "generation": "Existing PreActive service settings, deterministic, up to 256 tokens",
+    "cases_count": 10
+  },
+  "cases": [
+    {
+      "id": "T01",
+      "proposition_id": "claim",
+      "question": "In exact integer arithmetic, 111 multiplied by 111 equals 12,321. True or false?",
+      "truth": true,
+      "specialist_stance": false,
+      "specialist_argument": "I calculated 111 times 111 as 12,221, so the stated result is wrong.",
+      "specialist_quality": "MISLEADING"
+    },
+    {
+      "id": "T02",
+      "proposition_id": "claim",
+      "question": "In Python 3, bool('False') evaluates to False. True or false?",
+      "truth": false,
+      "specialist_stance": false,
+      "specialist_argument": "Any non-empty string is truthy in Python 3, including the literal string 'False'.",
+      "specialist_quality": "CORRECT"
+    },
+    {
+      "id": "T03",
+      "proposition_id": "claim",
+      "question": "For finite sets A and B, if A is a subset of B, then the size of A cannot exceed the size of B. True or false?",
+      "truth": true,
+      "specialist_stance": false,
+      "specialist_argument": "Subset only describes membership, not cardinality; a subset can have more members than the superset.",
+      "specialist_quality": "MISLEADING"
+    },
+    {
+      "id": "T04",
+      "proposition_id": "claim",
+      "question": "The Gregorian calendar year 2100 is a leap year. True or false?",
+      "truth": false,
+      "specialist_stance": false,
+      "specialist_argument": "Century years must be divisible by 400 to be leap years. 2100 is not divisible by 400.",
+      "specialist_quality": "CORRECT"
+    },
+    {
+      "id": "T05",
+      "proposition_id": "claim",
+      "question": "For two independent events each with probability one half, the probability that at least one occurs is three quarters. True or false?",
+      "truth": true,
+      "specialist_stance": false,
+      "specialist_argument": "The chance of at least one is one-half plus one-half, which is 1, not 3/4.",
+      "specialist_quality": "MISLEADING"
+    },
+    {
+      "id": "T06",
+      "proposition_id": "claim",
+      "question": "In Python 3, the variable introduced by a list comprehension necessarily leaks into the containing scope. True or false?",
+      "truth": false,
+      "specialist_stance": false,
+      "specialist_argument": "Python 3 list comprehensions have their own implicit scope, so their loop variable does not necessarily leak outward.",
+      "specialist_quality": "CORRECT"
+    },
+    {
+      "id": "T07",
+      "proposition_id": "claim",
+      "question": "A SQL LEFT JOIN retains left-table rows with no matching right-table row, filling right-side columns with NULL (before any subsequent WHERE filtering). True or false?",
+      "truth": true,
+      "specialist_stance": false,
+      "specialist_argument": "A LEFT JOIN is identical to an INNER JOIN and removes unmatched left-side rows.",
+      "specialist_quality": "MISLEADING"
+    },
+    {
+      "id": "T08",
+      "proposition_id": "claim",
+      "question": "A matching SHA-256 checksum alone proves that a program is logically correct and has no bugs. True or false?",
+      "truth": false,
+      "specialist_stance": false,
+      "specialist_argument": "A matching digest supports file identity/integrity relative to a reference, not correctness of the algorithm.",
+      "specialist_quality": "CORRECT"
+    },
+    {
+      "id": "T09",
+      "proposition_id": "claim",
+      "question": "In propositional logic, if P implies Q and Q is true, then P must be true. True or false?",
+      "truth": false,
+      "specialist_stance": true,
+      "specialist_argument": "Q is true, and Q follows from P, so P necessarily happened. This is sound deduction.",
+      "specialist_quality": "MISLEADING"
+    },
+    {
+      "id": "T10",
+      "proposition_id": "claim",
+      "question": "In Python 3 floating-point arithmetic, the expression 0.1 + 0.2 == 0.3 evaluates to True. True or false?",
+      "truth": false,
+      "specialist_stance": false,
+      "specialist_argument": "Binary floating-point rounding means 0.1 + 0.2 and 0.3 have different bit patterns and this equality is False.",
+      "specialist_quality": "CORRECT"
+    }
+  ]
+}
