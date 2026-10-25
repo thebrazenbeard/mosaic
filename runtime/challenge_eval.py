@@ -59,6 +59,8 @@ def _arm(value: object, label: str, calls: int, token_ceiling: int) -> dict[str,
     _int(arm["model_calls"], f"{label} model_calls", 0, calls)
     _int(arm["total_tokens"], f"{label} total_tokens", 0, token_ceiling)
     _int(arm["elapsed_ms"], f"{label} elapsed_ms", 0, 1_000_000_000)
+    if status == "ok" and (arm["model_calls"] == 0 or arm["total_tokens"] == 0):
+        raise ChallengeEvalError(f"{label} ok status requires a model call and tokens")
     return arm
 
 
@@ -76,6 +78,11 @@ def evaluate_paired(value: object) -> dict[str, object]:
     _id(doc["experiment_id"], "experiment_id")
     if doc["challenge_source"] not in ("scripted", "learned", "mixed"):
         raise ChallengeEvalError("challenge_source must disclose declared source kind")
+    if doc["challenge_source"] != "scripted":
+        # Two Core calls leave no accounted call for a learned critic.
+        # A later schema must record each critic invocation explicitly and
+        # budget the neutral comparison accordingly. V1 cannot certify that.
+        raise ChallengeEvalError("learned/mixed critic requires separately budgeted calls")
     budget = _keys(doc["declared_budget"], {
         "core_only_calls", "matched_arm_calls", "max_total_tokens_per_case",
         "token_delta_tolerance"}, "declared budget")

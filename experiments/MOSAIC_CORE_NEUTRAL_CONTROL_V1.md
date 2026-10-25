@@ -11,8 +11,8 @@ Use the **same frozen case IDs, expected answers, and model revision** for:
 1. `core_only`: one Core answer; a descriptive low-cost baseline.
 2. `neutral_second_pass`: two Core calls, the second prompted to reconsider
    without a specialist objection.
-3. `challenged`: an initial Core call followed by a challenge and Core
-   reconsideration; include every learned/synthetic critic cost in supplied
+3. `challenged`: an initial Core call followed by a **scripted, non-model**
+   challenge and Core reconsideration; include challenge overhead in supplied
    `total_tokens` and elapsed time.
 
 The challenge and neutral arms have the same **declared** two-call/token
@@ -22,6 +22,13 @@ cost-matched superiority test; only challenge versus neutral can be compared
 on that resource basis. All three arms must contain every case, with no
 post-hoc case dropping. `ok`, `abstain`, and `output_contract_error` are distinct;
 abstentions and errors do not count as correct guesses.
+
+V1 deliberately rejects `challenge_source=learned` or `mixed`: two Core calls
+plus a learned critic require at least a third model invocation, but V1 has no
+separate critic-call accounting or three-call matched neutral control. A future
+schema needs explicit Core/critic calls and matched total inference budgets.
+Successful `ok` rows must report at least one call and a nonzero token count;
+all resource numbers are still unauthenticated declarations.
 
 For a real experiment, freeze the independent case oracle and model/critic
 identities **before** generating outcomes; preserve raw generations, token
