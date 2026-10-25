@@ -80,17 +80,23 @@ class ContinuityCase:
         event_ids = [event.event_id for event in self.events]
         if len(event_ids) != len(set(event_ids)):
             raise HandoffProtocolError("event_id values must be unique within a case")
-        current = max(self.events, key=lambda event: event.revision)
-        if current.key != self.query_key or current.value != self.expected_value:
+        queried = [event for event in self.events if event.key == self.query_key]
+        if not queried:
+            raise HandoffProtocolError("query_key must be present in stage-A events")
+        current = max(queried, key=lambda event: event.revision)
+        if current.value != self.expected_value:
             raise HandoffProtocolError(
                 "expected result must bind to the highest-revision queried event"
             )
 
 
 def _encode(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    try:
+        return json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HandoffProtocolError("handoff payload must be valid UTF-8") from exc
 
 
 def _mosaic_state(events: tuple[StateEvent, ...]) -> dict[str, object]:
