@@ -29,6 +29,10 @@ class SpecialistResidency:
         )
         if not isinstance(self.specialist_id, str) or not self.specialist_id.strip():
             raise ResidencyModelError("specialist_id is required")
+        try:
+            self.specialist_id.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ResidencyModelError("specialist_id must be valid UTF-8 text") from exc
         if any(type(value) is not int for value in values):
             raise ResidencyModelError("residency byte counts must be integers")
         if any(value < 0 for value in values):
@@ -63,13 +67,16 @@ class ResidencyEnvelope:
 
 
 def canonical_json_sha256(value: Mapping[str, object]) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
+    try:
+        payload = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ResidencyModelError("receipt must contain valid UTF-8 text") from exc
     return hashlib.sha256(payload).hexdigest()
 
 
