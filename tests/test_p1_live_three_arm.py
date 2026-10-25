@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
+import tempfile
+from unittest import mock
 
 from experiments.p1_live_three_arm import (
-    LivePairError, _parse_core, collect, verify_dedicated_router,
+    LivePairError, _parse_core, collect, main, verify_dedicated_router,
 )
 
 
@@ -151,6 +154,44 @@ class LiveThreeArmTests(unittest.TestCase):
                             args["experiment_id"], args["corpus_id"],
                             args["frozen"], 12, [])
                 self.assertEqual(router.events, [])
+
+    def test_existing_output_file_cannot_be_overwritten_or_trigger_model_hashes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "case.json"
+            source.write_text('{"case_id":"a","prompt":"q","expected_supports":true}')
+            existing = root / "result.json"
+            existing.write_bytes(b"DO NOT REPLACE")
+            argv = ["runner", "--router-url", "http://127.0.0.1:8518",
+                    "--dedicated-router", "--core-model", "core-4b",
+                    "--critic-model", "critic-1p5b", "--core-model-file", "any",
+                    "--critic-model-file", "other", "--case-file", str(source),
+                    "--experiment-id", "x", "--corpus-id", "c",
+                    "--frozen-at", "2026-10-25T00:00:00Z", "--out", str(existing)]
+            with mock.patch("sys.argv", argv), mock.patch(
+                    "experiments.p1_live_three_arm._subject",
+                    side_effect=AssertionError("should not hash models")):
+                with self.assertRaises(SystemExit) as caught:
+                    main()
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(existing.read_bytes(), b"DO NOT REPLACE")
+
+    def test_oversized_case_file_is_read_with_a_fixed_bound(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "large-case.json"
+            source.write_bytes(b"x" * 9000)
+            target = Path(folder) / "result.json"
+            argv = ["runner", "--router-url", "http://127.0.0.1:8518",
+                    "--dedicated-router", "--core-model", "core-4b",
+                    "--critic-model", "critic-1p5b", "--core-model-file", "any",
+                    "--critic-model-file", "other", "--case-file", str(source),
+                    "--experiment-id", "x", "--corpus-id", "c",
+                    "--frozen-at", "2026-10-25T00:00:00Z", "--out", str(target)]
+            with mock.patch("sys.argv", argv), mock.patch.object(
+                    Path, "read_bytes", side_effect=AssertionError("unbounded read")):
+                with self.assertRaises(SystemExit) as caught:
+                    main()
+            self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":

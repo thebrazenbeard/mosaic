@@ -245,32 +245,42 @@ def main() -> int:
     args = parser.parse_args()
     if not args.dedicated_router:
         parser.error("explicitly attest that this is a dedicated router: model loading changes its state")
-    raw_case = args.case_file.read_bytes()
+    try:
+        with args.case_file.open("rb") as source:
+            raw_case = source.read(8193)
+    except OSError as exc:
+        parser.error(f"cannot read bounded case file: {exc}")
     if len(raw_case) > 8192:
         parser.error("case file exceeds 8192 bytes")
+    # Exclusive creation is a protected host-file boundary. Reject collisions
+    # (including symlinks) before hashing gigabytes of weights or loading GPUs.
     try:
-        case = strict_json_loads(raw_case.decode("utf-8"))
-        core = _subject(args.core_model, args.core_model_file)
-        critic = _subject(args.critic_model, args.critic_model_file)
-        traces: list[dict] = []
-        doc, score = collect(Router(args.router_url), case,
-                             args.core_model, args.critic_model,
-                             {args.core_model: core, args.critic_model: critic},
-                             args.experiment_id, args.corpus_id, args.frozen_at,
-                             args.n_predict, traces)
-        result = {"qualification": "UNTRUSTED_LIVE_MODEL_OBSERVATION_NOT_P1_PASS",
-                  "subjects": {args.core_model: core, args.critic_model: critic},
-                  "v2_input": doc, "v2_score": score, "raw_traces": traces,
-                  "limitations": ["router metadata and token counters are unauthenticated",
-                                  "corpus freeze and gold labels are caller supplied",
-                                  "one case, fixed arm order, no randomization or blinded steward"]}
-    except (ValueError, TypeError, ProbeError, UnicodeError, OSError) as exc:
-        result = {"qualification": "INCOMPLETE_LIVE_RUN_NOT_P1_PASS",
-                  "error": f"{type(exc).__name__}: {exc}",
-                  "raw_traces": locals().get("traces", []),
-                  "neural_benefit_qualified": False}
-    args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n",
-                        encoding="utf-8")
+        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as exc:
+        parser.error(f"output must be a new writable file: {exc}")
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        try:
+            case = strict_json_loads(raw_case.decode("utf-8"))
+            core = _subject(args.core_model, args.core_model_file)
+            critic = _subject(args.critic_model, args.critic_model_file)
+            traces: list[dict] = []
+            doc, score = collect(Router(args.router_url), case,
+                                 args.core_model, args.critic_model,
+                                 {args.core_model: core, args.critic_model: critic},
+                                 args.experiment_id, args.corpus_id, args.frozen_at,
+                                 args.n_predict, traces)
+            result = {"qualification": "UNTRUSTED_LIVE_MODEL_OBSERVATION_NOT_P1_PASS",
+                      "subjects": {args.core_model: core, args.critic_model: critic},
+                      "v2_input": doc, "v2_score": score, "raw_traces": traces,
+                      "limitations": ["router metadata and token counters are unauthenticated",
+                                      "corpus freeze and gold labels are caller supplied",
+                                      "one case, fixed arm order, no randomization or blinded steward"]}
+        except (ValueError, TypeError, ProbeError, UnicodeError, OSError) as exc:
+            result = {"qualification": "INCOMPLETE_LIVE_RUN_NOT_P1_PASS",
+                      "error": f"{type(exc).__name__}: {exc}",
+                      "raw_traces": locals().get("traces", []),
+                      "neural_benefit_qualified": False}
+        output.write(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"qualification": result["qualification"],
                       "observed_calls": len(result.get("raw_traces", [])),
                       "output": str(args.out)}, sort_keys=True))
