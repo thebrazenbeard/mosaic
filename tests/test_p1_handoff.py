@@ -112,6 +112,34 @@ class P1ProtocolHarnessTests(unittest.TestCase):
         with self.assertRaisesRegex(HandoffProtocolError, "query_key.*events"):
             run_case(case, "MOSAIC_STATE")
 
+    def test_unpaired_unicode_state_fails_closed_for_all_conditions(self):
+        invalid = chr(0xD800)
+        case = ContinuityCase(
+            case_id="invalid-unicode", family="CORRECTION",
+            events=(StateEvent("e1", "CORRECTION", "fact", invalid, 1),),
+            query_key="fact", expected_value=invalid,
+        )
+        for condition in CONDITIONS:
+            with self.subTest(condition=condition):
+                with self.assertRaises(HandoffProtocolError):
+                    run_case(case, condition)
+
+    def test_invalid_unicode_identifier_and_valid_unicode_value(self):
+        invalid = chr(0xD800)
+        malformed = ContinuityCase(
+            case_id="bad-id", family="CORRECTION",
+            events=(StateEvent(invalid, "CORRECTION", "fact", "value", 1),),
+            query_key="fact", expected_value="value",
+        )
+        with self.assertRaises(HandoffProtocolError):
+            run_case(malformed, "RESET")
+        supported = ContinuityCase(
+            case_id="utf8-valid", family="CORRECTION",
+            events=(StateEvent("e1", "CORRECTION", "café", "☕ ready", 1),),
+            query_key="café", expected_value="☕ ready",
+        )
+        self.assertEqual(run_case(supported, "MOSAIC_STATE")["answer"], "☕ ready")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,13 @@ class HandoffProtocolError(ValueError):
     pass
 
 
+def _require_utf8(value: str, label: str) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HandoffProtocolError(f"{label} must be valid UTF-8 text") from exc
+
+
 @dataclass(frozen=True, slots=True)
 class StateEvent:
     event_id: str
@@ -28,6 +35,11 @@ class StateEvent:
             raise HandoffProtocolError("event_id, family, and key are required")
         if not isinstance(self.value, str):
             raise HandoffProtocolError("event value must be a string")
+        for label, value in (
+            ("event_id", self.event_id), ("family", self.family),
+            ("key", self.key), ("value", self.value),
+        ):
+            _require_utf8(value, label)
         if type(self.revision) is not int or self.revision < 1:
             raise HandoffProtocolError("revision must be a positive integer")
 
@@ -50,6 +62,11 @@ class ContinuityCase:
             raise HandoffProtocolError("query_key is required")
         if not isinstance(self.expected_value, str):
             raise HandoffProtocolError("expected_value must be a string")
+        for label, value in (
+            ("case_id", self.case_id), ("family", self.family),
+            ("query_key", self.query_key), ("expected_value", self.expected_value),
+        ):
+            _require_utf8(value, label)
         if not self.events:
             raise HandoffProtocolError("case requires stage-A events")
         for event in self.events:
@@ -73,9 +90,12 @@ class ContinuityCase:
 
 
 def _encode(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    try:
+        return json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HandoffProtocolError("handoff payload must be valid UTF-8") from exc
 
 
 def _mosaic_state(events: tuple[StateEvent, ...]) -> dict[str, object]:
