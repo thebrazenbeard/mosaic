@@ -6,6 +6,7 @@ from runtime.neural_core import NeuralThinkingCore, NeuralOutputError
 from runtime.thinking_core import (
     CoreDeliberationEngine, CorePosition, DeliberationTask,
     EvidenceVerdict, SpecialistObjection, DecisionStatus,
+    subject_digest,
 )
 
 
@@ -43,6 +44,7 @@ class FixedVerifier:
         return EvidenceVerdict(
             task.proposition_id,False,"test-harness",
             "sha256:reproducible-test-subject", "The failing test rejects the claim",
+            subject_sha256=subject_digest(task),
         )
 
 
@@ -58,7 +60,8 @@ class NeuralThinkingCoreTests(unittest.TestCase):
         core=NeuralThinkingCore(backend)
         receipt=CoreDeliberationEngine().deliberate(
             self.task,core,[SingleSpecialist()],FixedVerifier())
-        self.assertEqual(receipt.status,DecisionStatus.EVIDENCE_SUPPORTED_ADVISORY)
+        self.assertEqual(receipt.status,DecisionStatus.VERIFIER_ASSERTED_ADVISORY)
+        self.assertFalse(receipt.claim_verified)
         self.assertEqual(len(backend.messages),2)
         self.assertEqual(backend.messages[0][0]["role"],"system")
         self.assertEqual(backend.messages[0][1]["role"],"user")

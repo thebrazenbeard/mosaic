@@ -3,7 +3,7 @@ import unittest
 
 from runtime.thinking_core import (
     DeliberationTask, CorePosition, SpecialistObjection, EvidenceVerdict,
-    CoreDeliberationEngine, DecisionStatus, ProtocolViolation,
+    CoreDeliberationEngine, DecisionStatus, ProtocolViolation, subject_digest,
 )
 
 
@@ -53,6 +53,7 @@ class StubVerifier:
             verifier_id=self.issuer,
             evidence_ref="sha256:test-frozen-fixture" if self.value is not None else "",
             rationale="Fixture-based check" if self.value is not None else "No independent fact check",
+            subject_sha256=subject_digest(task),
         )
 
 
@@ -96,21 +97,21 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
         self.assertFalse(result.claim_verified)
         self.assertFalse(result.effect_executed)
 
-    def test_external_verifier_can_veto_core_even_after_core_rejects_specialist(self):
+    def test_unattested_verifier_conflict_holds_even_after_core_rejects_specialist(self):
         core=StubCore(pos(True),pos(True,acknowledged=("auditor",)))
         result=CoreDeliberationEngine().deliberate(
             task(),core,[StubSpecialist("auditor",False)],StubVerifier(False))
-        self.assertEqual(result.status,DecisionStatus.BLOCKED_BY_EVIDENCE)
-        self.assertTrue(result.verified_proposition_is_false)
+        self.assertEqual(result.status,DecisionStatus.HOLD_UNATTESTED_VERIFIER_CONFLICT)
+        self.assertFalse(result.verified_proposition_is_false)
         self.assertFalse(result.claim_verified)
         self.assertFalse(result.effect_executed)
 
-    def test_core_can_accept_specialist_on_verified_evidence(self):
+    def test_core_can_accept_specialist_on_unattested_evidence_without_verification(self):
         core=StubCore(pos(True),pos(False,acknowledged=("auditor",)))
         result=CoreDeliberationEngine().deliberate(
             task(),core,[StubSpecialist("auditor",False)],StubVerifier(False))
-        self.assertEqual(result.status,DecisionStatus.EVIDENCE_SUPPORTED_ADVISORY)
-        self.assertTrue(result.claim_verified)
+        self.assertEqual(result.status,DecisionStatus.VERIFIER_ASSERTED_ADVISORY)
+        self.assertFalse(result.claim_verified)
         self.assertEqual(result.core_final.supports,False)
 
     def test_consequential_unverified_dispute_holds(self):
@@ -120,12 +121,12 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
         self.assertEqual(result.status,DecisionStatus.HOLD_UNVERIFIED_DISPUTE)
         self.assertFalse(result.effect_executed)
 
-    def test_protected_effect_requires_owner_even_with_verified_agreement(self):
+    def test_protected_effect_requires_owner_even_with_verifier_assertion(self):
         core=StubCore(pos(True),pos(True))
         result=CoreDeliberationEngine().deliberate(
             task(protected=True),core,[StubSpecialist("auditor",True)],StubVerifier(True))
         self.assertEqual(result.status,DecisionStatus.PROPOSED_EFFECT_REQUIRES_AUTHORIZATION)
-        self.assertTrue(result.claim_verified)
+        self.assertFalse(result.claim_verified)
         self.assertFalse(result.effect_executed)
 
     def test_claim_without_challenge_is_not_magically_verified(self):
@@ -162,8 +163,8 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
         result=CoreDeliberationEngine().deliberate(
             task(),core,[],StubVerifier(False))
         self.assertEqual(len(core.call_log),2)
-        self.assertEqual(result.status,DecisionStatus.EVIDENCE_SUPPORTED_ADVISORY)
-        self.assertTrue(result.verified_proposition_is_false)
+        self.assertEqual(result.status,DecisionStatus.VERIFIER_ASSERTED_ADVISORY)
+        self.assertFalse(result.verified_proposition_is_false)
 
     def test_unknown_verifier_cannot_resolve_a_consequential_dispute(self):
         core=StubCore(pos(True),pos(True,acknowledged=("auditor",)))
@@ -233,6 +234,77 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
         self.assertEqual(a.receipt_sha256,b.receipt_sha256)
         self.assertNotEqual(a.receipt_sha256,"")
         self.assertIn("NOT_NEURAL_QUALIFICATION",a.claim_ceiling)
+        self.assertIn("callbacks are not sandboxed",a.claim_ceiling)
+
+    def test_unregistered_self_asserted_verifier_is_never_authenticated(self):
+        class UnregisteredVerifier:
+            def examine(self, current, proposal, objections):
+                return EvidenceVerdict(
+                    proposition_id=current.proposition_id,
+                    supports=True,
+                    verifier_id="unregistered-fake-verifier",
+                    evidence_ref="evidence://case-A-only",
+                    rationale="No authenticated evidence",
+                    subject_sha256=subject_digest(current),
+                )
+
+        for case_id in ("case-A", "case-B"):
+            current=DeliberationTask(case_id,"requirements-met","Does this satisfy the invariant?")
+            result=CoreDeliberationEngine().deliberate(
+                current,StubCore(pos(True),pos(True)),[],UnregisteredVerifier())
+            self.assertFalse(result.claim_verified)
+            self.assertFalse(result.verified_proposition_is_false)
+            self.assertEqual(result.status,DecisionStatus.VERIFIER_ASSERTED_ADVISORY)
+
+    def test_replayed_evidence_cannot_bind_to_a_different_case_or_question(self):
+        first=DeliberationTask("case-A","requirements-met","Question for case A")
+        class ReplayedVerifier:
+            def examine(self, current, proposal, objections):
+                return EvidenceVerdict(
+                    proposition_id=current.proposition_id,
+                    supports=True, verifier_id="unregistered-fake-verifier",
+                    evidence_ref="evidence://case-A-only", rationale="Replayed",
+                    subject_sha256=subject_digest(first),
+                )
+        for current in (
+            DeliberationTask("case-B","requirements-met","Question for case A"),
+            DeliberationTask("case-A","requirements-met","Different question"),
+        ):
+            with self.subTest(current=current),self.assertRaisesRegex(ProtocolViolation,"subject"):
+                CoreDeliberationEngine().deliberate(
+                    current,StubCore(pos(True),pos(True)),[],ReplayedVerifier())
+
+    def test_unpaired_surrogate_does_not_escape_domain_error_boundary(self):
+        unsafe=CorePosition("requirements-met",True,chr(0xD800))
+        with self.assertRaisesRegex(ProtocolViolation,"UTF-8"):
+            CoreDeliberationEngine().deliberate(task(),StubCore(unsafe,unsafe),[])
+
+    def test_unknown_verdict_rejects_falsey_nonstring_evidence_references(self):
+        for bad_ref in ([],False,0,{},None):
+            class BadUnknownVerifier:
+                def examine(self, current, proposal, objections):
+                    return EvidenceVerdict(
+                        proposition_id=current.proposition_id,
+                        supports=None,verifier_id="external-harness",
+                        evidence_ref=bad_ref,rationale="No admissible claim",
+                        subject_sha256=subject_digest(current),
+                    )
+            with self.subTest(value=bad_ref),self.assertRaisesRegex(ProtocolViolation,"evidence_ref"):
+                CoreDeliberationEngine().deliberate(
+                    task(),StubCore(pos(True),pos(True)),[],BadUnknownVerifier())
+
+    def test_verifier_subject_digest_requires_strict_lowercase_sha256(self):
+        valid=subject_digest(task())
+        for bad_digest in ([],None,False,"",valid.upper(),valid[:-1],"g"*64):
+            class BadDigestVerifier:
+                def examine(self, current, proposal, objections):
+                    return EvidenceVerdict(
+                        current.proposition_id,True,"external-harness",
+                        "sha256:fixture","Claimed fixture",subject_sha256=bad_digest,
+                    )
+            with self.subTest(value=bad_digest),self.assertRaisesRegex(ProtocolViolation,"subject_sha256"):
+                CoreDeliberationEngine().deliberate(
+                    task(),StubCore(pos(True),pos(True)),[],BadDigestVerifier())
 
 
 if __name__ == "__main__":

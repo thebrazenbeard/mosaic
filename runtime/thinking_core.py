@@ -23,6 +23,10 @@ class DecisionStatus(str, Enum):
     CONTESTED_ADVISORY = "CONTESTED_ADVISORY"
     HOLD_UNACKNOWLEDGED_OBJECTION = "HOLD_UNACKNOWLEDGED_OBJECTION"
     HOLD_UNVERIFIED_DISPUTE = "HOLD_UNVERIFIED_DISPUTE"
+    HOLD_UNATTESTED_VERIFIER_CONFLICT = "HOLD_UNATTESTED_VERIFIER_CONFLICT"
+    VERIFIER_ASSERTED_ADVISORY = "VERIFIER_ASSERTED_ADVISORY"
+    # V1 historical labels: this unauthenticated source engine never emits
+    # these stronger statuses; no trusted-verifier path exists yet.
     BLOCKED_BY_EVIDENCE = "BLOCKED_BY_EVIDENCE"
     EVIDENCE_SUPPORTED_ADVISORY = "EVIDENCE_SUPPORTED_ADVISORY"
     PROPOSED_EFFECT_REQUIRES_AUTHORIZATION = "PROPOSED_EFFECT_REQUIRES_AUTHORIZATION"
@@ -60,6 +64,9 @@ class EvidenceVerdict:
     verifier_id: str
     evidence_ref: str
     rationale: str
+    # Binds a verifier's assertion to the *entire* task, not merely a reusable
+    # proposition ID. This is not a signature or verifier attestation.
+    subject_sha256: str = ""
 
 
 class ThinkingCore(Protocol):
@@ -111,6 +118,10 @@ class DeliberationReceipt:
 def _required(value: str, label: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ProtocolViolation(f"{label} must be a nonempty string")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ProtocolViolation(f"{label} must be valid UTF-8 text") from exc
 
 
 def _identity(value: str, label: str) -> None:
@@ -180,17 +191,35 @@ def _evidence(
     if result.verifier_id.casefold() in {"core", *(s.casefold() for s in specialist_ids)}:
         raise ProtocolViolation("Independent verifier cannot be Core or a specialist")
     _required(result.rationale, "verifier rationale")
+    if not isinstance(result.evidence_ref, str):
+        raise ProtocolViolation("verifier evidence_ref must be a string")
     if result.supports is not None:
         _required(result.evidence_ref, "independent evidence reference")
-    elif result.evidence_ref:
+    elif result.evidence_ref != "":
         raise ProtocolViolation("Unknown verdict cannot assert verified evidence")
+    if not isinstance(result.subject_sha256, str) or (
+        len(result.subject_sha256) != 64 or
+        any(char not in "0123456789abcdef" for char in result.subject_sha256)
+    ):
+        raise ProtocolViolation("Verifier subject_sha256 must be a lowercase SHA-256 hex string")
+    if result.subject_sha256 != subject_digest(task):
+        raise ProtocolViolation("Verifier evidence subject binding does not match task")
+
+
+def subject_digest(task: DeliberationTask) -> str:
+    """Deterministic exact-task binding; *not* independent verification."""
+    _task(task)
+    return _receipt_digest({"task": asdict(task)})
 
 
 def _receipt_digest(fields: dict[str, object]) -> str:
-    serialized = json.dumps(
-        fields, sort_keys=True, separators=(",", ":"), allow_nan=False,
-        ensure_ascii=False,
-    ).encode("utf-8")
+    try:
+        serialized = json.dumps(
+            fields, sort_keys=True, separators=(",", ":"), allow_nan=False,
+            ensure_ascii=False,
+        ).encode("utf-8")
+    except (UnicodeEncodeError, TypeError, ValueError) as exc:
+        raise ProtocolViolation("receipt cannot be encoded as canonical UTF-8 JSON") from exc
     return sha256(serialized).hexdigest()
 
 
@@ -198,8 +227,10 @@ class CoreDeliberationEngine:
     """Boundary checks around neural reasoning, not an automated intelligence.
 
     The Core constructs and revises positions. Specialists can challenge them.
-    Only external verifier evidence can verify a proposition. Protected effects
-    remain unexecuted irrespective of Core, specialist, or verifier confidence.
+    A caller-injected verifier can supply assertions, not authenticated proof.
+    No trust root is configured here, so claim verification remains false.
+    The engine itself executes no protected effects; injected Python callbacks
+    are outside its effect-observation and sandboxing boundary.
     """
 
     def deliberate(
@@ -257,36 +288,37 @@ class CoreDeliberationEngine:
         aligns_with_evidence = evidence_known and final.supports == evidence.supports
         conflict_with_evidence = evidence_known and not aligns_with_evidence
 
-        # A verified disagreement can veto the Core's position, but a
+        # A verifier-asserted disagreement can require a HOLD, but a
         # specialist cannot replace the Core as the origin of final reasoning.
-        # An unsupported specialist dispute can be disclosed or held, never
-        # upgraded to independent verification.
+        # An arbitrary verifier ID/evidence string is not an attestation.
         if missing:
             status = DecisionStatus.HOLD_UNACKNOWLEDGED_OBJECTION
         elif conflict_with_evidence:
-            status = DecisionStatus.BLOCKED_BY_EVIDENCE
+            status = DecisionStatus.HOLD_UNATTESTED_VERIFIER_CONFLICT
         elif dissent and not evidence_known and (task.consequential or task.protected_effect):
             status = DecisionStatus.HOLD_UNVERIFIED_DISPUTE
         elif task.protected_effect:
             status = DecisionStatus.PROPOSED_EFFECT_REQUIRES_AUTHORIZATION
         elif aligns_with_evidence:
-            status = DecisionStatus.EVIDENCE_SUPPORTED_ADVISORY
+            status = DecisionStatus.VERIFIER_ASSERTED_ADVISORY
         elif dissent:
             status = DecisionStatus.CONTESTED_ADVISORY
         else:
             status = DecisionStatus.UNVERIFIED_ADVISORY
 
-        claim_verified = bool(aligns_with_evidence and status in {
-            DecisionStatus.EVIDENCE_SUPPORTED_ADVISORY,
-            DecisionStatus.PROPOSED_EFFECT_REQUIRES_AUTHORIZATION,
-        })
+        # In-memory provider injection authenticates neither verifier origin
+        # nor its evidence. A digest prevents accidental subject replay, not
+        # forgery. Do not promote caller assertions to verified facts.
+        claim_verified = False
         ceiling = (
             "MECHANICAL_DECISION_PROTOCOL_ONLY_NOT_NEURAL_QUALIFICATION: "
             "receipt records a Core position, not proof of model reasoning; "
-            "verifier provenance must be assessed separately; no effects executed"
+            "verifier assertions are UNATTESTED; claim_verified remains false; "
+            "effect_executed=false covers engine-owned actions only; "
+            "caller-injected callbacks are not sandboxed or monitored"
         )
         fields = {
-            "schema": "MOSAIC_THINKING_CORE_DELIBERATION_V1",
+            "schema": "MOSAIC_THINKING_CORE_DELIBERATION_V2",
             "task": asdict(task),
             "core_initial": asdict(initial),
             "core_final": asdict(final),
@@ -294,9 +326,7 @@ class CoreDeliberationEngine:
             "evidence": None if evidence is None else asdict(evidence),
             "status": status.value,
             "claim_verified": claim_verified,
-            "verified_proposition_is_false": bool(
-                evidence_known and evidence.supports is False
-            ),
+            "verified_proposition_is_false": False,
             "effect_executed": False,
             "claim_ceiling": ceiling,
         }
