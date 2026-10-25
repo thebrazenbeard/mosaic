@@ -14,6 +14,7 @@ from runtime.thinking_core import DeliberationTask
 
 class FakeQwen(BaseHTTPRequestHandler):
     model_id = "qwen3.5-4b-local"
+    advertised_models = None
     answer = '{"proposition_id":"p","supports":false,"reasoning":"I dispute the premise.","acknowledged_objections":[]}'
     behavior = "normal"
     requests = []
@@ -21,7 +22,12 @@ class FakeQwen(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != "/v1/models":
             self.send_error(404);return
-        body = json.dumps({"object":"list","data":[{"id":self.model_id,"object":"model"}]}).encode()
+        models = self.advertised_models
+        records = ([{"id":self.model_id,"object":"model"}] if models is None else [
+            record if isinstance(record, dict) else {"id":record,"object":"model"}
+            for record in models
+        ])
+        body = json.dumps({"object":"list","data":records}).encode()
         self.send_response(200)
         self.send_header("Content-Type","application/json")
         self.send_header("Content-Length",str(len(body)))
@@ -68,11 +74,12 @@ class FakeQwen(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def mock_local_service(*, model="qwen3.5-4b-local", behavior="normal"):
+def mock_local_service(*, model="qwen3.5-4b-local", behavior="normal", advertised=None):
     class Server(FakeQwen):
         model_id=model
         requests=[]
     Server.behavior=behavior
+    Server.advertised_models=advertised
     Server.answers=[]
     server=ThreadingHTTPServer(("127.0.0.1",0),Server)
     thread=Thread(target=server.serve_forever,daemon=True)
@@ -210,6 +217,38 @@ class LocalNeuralBackendTests(unittest.TestCase):
             self.assertEqual(status["status"],"ENDPOINT_MODEL_ID_ADVERTISED_NOT_BEHAVIOR_VERIFIED")
             self.assertFalse(status["model_identity_cryptographically_verified"])
             self.assertEqual(service.requests,[])
+
+    def test_multi_model_local_catalog_accepts_exact_requested_model(self):
+        # Real Ollama endpoints may advertise all installed models, while a
+        # Mosaic request still pins exactly one ID for generation.
+        with mock_local_service(advertised=[
+            "other:1b", "qwen3.5-4b-local", "another:2b",
+        ]) as (port,service):
+            backend=LoopbackCoreInference(port=port)
+            self.assertEqual(backend.preflight()["model_id"],"qwen3.5-4b-local")
+            backend(MESSAGES)
+            self.assertEqual(len(service.requests),1)
+            self.assertEqual(service.requests[0]["model"],"qwen3.5-4b-local")
+
+    def test_ambiguous_or_malformed_catalog_fails_closed(self):
+        for rows in (
+            [],
+            ["other:1b"],
+            ["qwen3.5-4b-local", "qwen3.5-4b-local"],
+            ["qwen3.5-4b-local", "other:1b", "other:1b"],
+            [{"id":"qwen3.5-4b-local","object":"something-else"}],
+            [{"id":42,"object":"model"},"qwen3.5-4b-local"],
+            [" qwen3.5-4b-local ", "other:1b"],
+            ["qwen3.5-4b-local", "\ud800"],
+        ):
+            with self.subTest(rows=rows), mock_local_service(advertised=rows) as (port,service):
+                with self.assertRaisesRegex(LoopbackBackendError,"[Mm]odel"):
+                    LoopbackCoreInference(port=port)(MESSAGES)
+                self.assertEqual(service.requests,[])
+
+    def test_surrogate_in_requested_model_id_rejected_before_http(self):
+        with self.assertRaisesRegex(ValueError,"invalid Unicode"):
+            LoopbackCoreInference(model_id="bad\ud800model")
 
     def test_refuses_pretty_text_as_valid_json_core_reasoning(self):
         with mock_local_service() as (port,service):
