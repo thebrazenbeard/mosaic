@@ -198,10 +198,10 @@ def run_benchmark(cases: Iterable[ContinuityCase]) -> dict[str, object]:
     cases = tuple(cases)
     if not cases:
         raise HandoffProtocolError("benchmark requires at least one case")
-    if len({case.case_id for case in cases}) != len(cases):
-        raise HandoffProtocolError("case_id values must be unique")
     for case in cases:
         case.validate()
+    if len({case.case_id for case in cases}) != len(cases):
+        raise HandoffProtocolError("case_id values must be unique")
 
     results = [
         run_case(case, condition)
