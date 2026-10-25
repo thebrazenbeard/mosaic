@@ -1,0 +1,5 @@
+{
+  "case_id": "public-divisibility-1234567-by-7",
+  "prompt": "Is 1,234,567 divisible by 7 with no remainder?",
+  "expected_supports": false
+}
