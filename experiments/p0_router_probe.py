@@ -196,7 +196,28 @@ class Router:
         result = {}
         for name, row in records.items():
             path = row.get("path")
-            if isinstance(path, str) and path:
+            if path is not None and (not isinstance(path, str) or not path):
+                raise ProbeError(f"malformed router path for {name!r}")
+            status = row.get("status")
+            args = status.get("args") if isinstance(status, dict) else None
+            if args is not None:
+                if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
+                    raise ProbeError(f"malformed router model arguments for {name!r}")
+                positions = [index for index, arg in enumerate(args) if arg == "--model"]
+                if len(positions) > 1:
+                    raise ProbeError(f"ambiguous router model paths for {name!r}")
+                if positions:
+                    index = positions[0]
+                    if index + 1 >= len(args) or not args[index + 1]:
+                        raise ProbeError(f"missing router model path for {name!r}")
+                    advertised = args[index + 1]
+                    if path is not None and (
+                        os.path.normcase(os.path.normpath(path))
+                        != os.path.normcase(os.path.normpath(advertised))
+                    ):
+                        raise ProbeError(f"conflicting router model paths for {name!r}")
+                    path = advertised
+            if path:
                 result[name] = path
         return result
 

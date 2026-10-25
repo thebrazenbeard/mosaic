@@ -232,6 +232,39 @@ class P0RouterProbeTests(unittest.TestCase):
             run_probe(router, "A", "B", 10, FakeSampler(), MODEL_FILES)
         self.assertEqual(router.transitions, [])
 
+    def test_preset_model_paths_are_read_from_router_status_args(self):
+        # Observed llama.cpp 0.4.1-dev on Windows: preset entries omit top-level
+        # ``path`` and advertise the exact model file in status.args instead.
+        router = Router("http://127.0.0.1:8517")
+        router.model_records = lambda: {
+            "code-1p5b": {"status": {"value": "unloaded", "args": [
+                "llama-server.exe", "--alias", "code-1p5b", "--model",
+                "D:/OllamaModels/blobs/sha256-model-a",
+            ]}},
+            "vera-4b": {"status": {"value": "unloaded", "args": [
+                "llama-server.exe", "--model", "D:/VERA/Models/gguf/model-b.gguf",
+            ]}},
+        }
+        self.assertEqual(router.paths(), {
+            "code-1p5b": "D:/OllamaModels/blobs/sha256-model-a",
+            "vera-4b": "D:/VERA/Models/gguf/model-b.gguf",
+        })
+
+    def test_ambiguous_preset_model_path_fails_closed(self):
+        router = Router("http://127.0.0.1:8517")
+        for args in (
+            ["--model", "/models/a.gguf", "--model", "/models/b.gguf"],
+            ["--model"],
+            ["--model", ""],
+            ["--model", 3],
+        ):
+            with self.subTest(args=args):
+                router.model_records = lambda args=args: {
+                    "A": {"status": {"args": args}}
+                }
+                with self.assertRaises(ProbeError):
+                    router.paths()
+
 
 if __name__ == "__main__":
     unittest.main()
