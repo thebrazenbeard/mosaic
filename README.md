@@ -57,6 +57,7 @@ These are source interfaces and regression tests on `main`, not an installed Mos
 
 See:
 
+- [Rezon Unverified Advisory Bridge V1](docs/MOSAIC_REZON_ADVISORY_V1.md) — exact-task, read-only Rezon collective first-answer adapter; synthetic real-store contract test, no trusted evidence or independent learned-specialist qualification.
 - [Project Seed](docs/PROJECT_SEED.md)
 - [Architecture V0](docs/ARCHITECTURE_V0.md)
 - [Research Plan](docs/RESEARCH_PLAN.md)

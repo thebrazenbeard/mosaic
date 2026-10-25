@@ -12,7 +12,8 @@ class HandoffProtocolError(ValueError):
     pass
 
 
-def _require_utf8(value: str, label: str) -> None:
+def _valid_utf8(value: str, label: str) -> None:
+    """Validate strings before UTF-8 receipt serialization."""
     try:
         value.encode("utf-8")
     except UnicodeEncodeError as exc:
@@ -37,9 +38,9 @@ class StateEvent:
             raise HandoffProtocolError("event value must be a string")
         for label, value in (
             ("event_id", self.event_id), ("family", self.family),
-            ("key", self.key), ("value", self.value),
+            ("key", self.key), ("event value", self.value),
         ):
-            _require_utf8(value, label)
+            _valid_utf8(value, label)
         if type(self.revision) is not int or self.revision < 1:
             raise HandoffProtocolError("revision must be a positive integer")
 
@@ -66,7 +67,7 @@ class ContinuityCase:
             ("case_id", self.case_id), ("family", self.family),
             ("query_key", self.query_key), ("expected_value", self.expected_value),
         ):
-            _require_utf8(value, label)
+            _valid_utf8(value, label)
         if not self.events:
             raise HandoffProtocolError("case requires stage-A events")
         for event in self.events:
