@@ -1,55 +1,32 @@
 # CURRENT — Mosaic
 
-Last updated: 2026-09-18
+Audit snapshot: 2026-10-25. Recheck live `main`, open pull requests, and their exact heads before acting; this page is not a runtime health receipt.
 
-## Status
+## Implemented and unqualified
 
-Mosaic is an active **BT2 project assignment** in foundation/research stage.
+Mosaic remains an experimental **modular-model architecture**, not a trained 20B-equivalent agent. Canonical `main` contains bounded, deterministic Python research harnesses:
 
-No Mosaic implementation, trained model, training recipe, or claim of equivalence to a monolithic 20B model is currently canonical.
+- `runtime/residency.py`: declared-byte residency and sequential-swap feasibility accounting, **not** measured accelerator load/unload.
+- `runtime/handoff.py`: revision-aware state handoff and RESET / MOSAIC STATE / FULL HISTORY / ORDINARY RETRIEVAL protocol comparisons, **not** demonstrated identity continuity or learned specialist transfer.
+- `tests/`: source-level harness assertions, **not** neural, GPU, or cross-host qualification.
 
-## Originating concept
+No real specialist checkpoint family, demonstrated parameter swap, GPU residency measurement, repeated clean-run continuity, or Mosaic P0/P1 pass is established by these modules. The original ~20B logical pool and ~4 GB VRAM goal are research targets.
 
-The project began with this semantic design:
+`vera-mono` has already adapted Mosaic's state-handoff *source* into `packages/vera_core/src/vera_core/state_handoff.py`, with a donor record at `provenance/donors/mosaic_state_handoff.json`. That adaptation does not grant identity continuity, authority, model training, or an active Mosaic runtime integration.
 
-- one logical `VERA-MODEL20B`-class agent;
-- several smaller specialist partitions, initially imagined around ~3 GB each;
-- a smaller `VERA-MODEL20B_boot` / Core responsible for allowing the partitions to operate independently while composing as one agent;
-- target hardware motivation: approximately 4 GB VRAM.
+## Security and open research branches
 
-The important research question is not merely routing requests to different models. It is whether specialist partitions can be swapped while preserving enough shared continuity that the system still behaves as one logical agent.
+Historical `main@276282a1d4a34588f34a4d18ab3da76a84b6e48b` contained a concealed VS Code folder-open execution path and a disguised `.lkf` asset. Security containment PR [#13](https://github.com/thebrazenbeard/mosaic/pull/13) removed those source assets and added a regression guard; merged `main` readback at this audit is `7158ce94785952b30e96ea45864b81d0ca1c213a`.
 
-## Active work
+**Treat the sanitized main after #13 as a prerequisite to any model-branch promotion.** Draft research PRs [#10](https://github.com/thebrazenbeard/mosaic/pull/10), [#11](https://github.com/thebrazenbeard/mosaic/pull/11), and [#12](https://github.com/thebrazenbeard/mosaic/pull/12) were authored against older source and may reintroduce the concealed asset if merged unchanged. Rebase or reconstruct legitimate code on a verified sanitized head, then rerun the containment guard and tests before review.
 
-Draft PR #1 on `project/foundation-v1` currently contains:
+The neural-Core challenge reported in PR #12 used a real local model with scripted objections, **not independent learned specialists**, and scored 6/10 before versus 6/10 after challenge: no demonstrated accuracy improvement or neural qualification.
 
-- preserved project seed;
-- exploratory Architecture V0;
-- research plan;
-- common terminology;
-- P0 predeclared residency-feasibility experiment;
-- P1 predeclared cross-specialist-continuity experiment.
+## Next executable gates
 
-Exact branch head when this file was written:
+1. **Source trust:** keep the containment guard green and rebuild any retained research work on sanitized source.
+2. **P0 hardware:** predeclare a real accelerator protocol and measure weight/KV/activation/workspace residency, actual eviction, swap latency, and repeated cycles under a fixed budget.
+3. **P1 continuity:** run genuinely different specialists after full unload/reload, with predeclared identity/authority boundaries and RESET / FULL HISTORY / RETRIEVAL controls.
+4. **Neural benefit:** independently trained or identified models, unseen holdouts, cost-matched neutral second-pass controls, and raw receipt preservation before any superiority claim.
 
-`f13a1740a6c3e0040af35a47582babd9a44e20ee`
-
-A BT2 worker must fresh-check the PR/head before carrying this state forward.
-
-## Immediate next Mosaic frontier
-
-Do not jump directly into 20B training.
-
-The intended order is:
-
-1. verify active-residency/swap feasibility under a constrained VRAM ceiling (P0);
-2. verify cross-specialist state continuity after full specialist unload/reload (P1);
-3. compare ordinary retrieval, structured state, and learned/shared state;
-4. only then choose a training/decomposition strategy for larger specialists.
-
-## Current boundaries
-
-- Draft PR #1 remains unmerged.
-- Exploratory size figures are target sketches, not implementation facts.
-- HC-Brain is not Mosaic's template.
-- No protected effect is implied by BT2 assignment status.
+No deployment, training promotion, privileged effects, or merge is authorized by this status page. Patrick retains protected-effect authority under `BT2_ASSIGNMENT.md`.
