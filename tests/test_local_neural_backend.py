@@ -110,6 +110,10 @@ class LocalNeuralBackendTests(unittest.TestCase):
                 with self.assertRaisesRegex(LoopbackBackendError, "JSON"):
                     _parse_json(response)
 
+    def test_unpaired_unicode_http_json_fails_closed(self):
+        with self.assertRaisesRegex(LoopbackBackendError, "JSON"):
+            _parse_json(b'{"model":"\\uD800"}')
+
     def test_real_loopback_http_contract_calls_core_inference(self):
         with mock_local_service() as (port,service):
             backend=LoopbackCoreInference(port=port)

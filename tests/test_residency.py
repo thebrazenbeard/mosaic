@@ -81,6 +81,20 @@ class ResidencyModelTests(unittest.TestCase):
         b = evaluate_swap_sequence(env, ["code", "code"])
         self.assertEqual(a["input_sha256"], b["input_sha256"])
 
+    def test_runtime_pool_exceeding_vram_does_not_prove_weight_pool_exceeds_it(self):
+        env = ResidencyEnvelope(
+            vram_ceiling_bytes=100,
+            boot_core_gpu_bytes=10,
+            specialists=(
+                SpecialistResidency("A", 30, 30, 30, 0, 0),
+                SpecialistResidency("B", 30, 30, 30, 0, 0),
+            ),
+        )
+        receipt = evaluate_swap_sequence(env, ["A", "B"])
+        self.assertTrue(receipt["logical_pool_exceeds_vram_ceiling"])
+        self.assertEqual(receipt["total_declared_specialist_weight_bytes"], 60)
+        self.assertFalse(receipt["specialist_weight_pool_exceeds_vram_ceiling"])
+
 
 if __name__ == "__main__":
     unittest.main()

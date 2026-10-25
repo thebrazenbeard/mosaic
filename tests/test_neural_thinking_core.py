@@ -93,6 +93,14 @@ class NeuralThinkingCoreTests(unittest.TestCase):
         with self.assertRaisesRegex(NeuralOutputError, "JSON"):
             NeuralThinkingCore(backend).think(self.task)
 
+    def test_unpaired_unicode_surrogate_fails_before_receipt_encoding(self):
+        raw = (r'{"proposition_id":"accepted","supports":true,'
+               r'"reasoning":"\uD800","acknowledged_objections":[]}')
+        backend = CapturingGenerator([raw])
+        with self.assertRaisesRegex(NeuralOutputError, "JSON"):
+            CoreDeliberationEngine().deliberate(
+                self.task, NeuralThinkingCore(backend), [])
+
     def test_model_cannot_change_case_identity(self):
         backend=CapturingGenerator([json.dumps({
             "proposition_id":"other","supports":True,"reasoning":"Mismatch",

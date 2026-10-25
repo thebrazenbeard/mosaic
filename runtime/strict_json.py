@@ -32,11 +32,26 @@ def loads(raw: str) -> object:
         return converted
 
     try:
-        return json.loads(raw, object_pairs_hook=unique_pairs,
-                          parse_constant=reject_constant, parse_float=finite_float)
+        parsed = json.loads(raw, object_pairs_hook=unique_pairs,
+                            parse_constant=reject_constant, parse_float=finite_float)
     except RecursionError as exc:
         # An untrusted response can be below the byte limit but nested deeply
         # enough to exceed Python's decoder recursion bound. Normalize this to
         # the decoder's declared invalid-input domain; its callers convert
         # ValueError to their explicit fail-closed boundary exceptions.
         raise ValueError("JSON nesting exceeds decoder depth") from exc
+
+    # Escaped lone UTF-16 surrogates survive json.loads but cannot be encoded
+    # into the UTF-8 receipts. Check keys and values iteratively at ingress.
+    pending = [parsed]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+                raise ValueError("JSON contains invalid Unicode surrogate")
+        elif isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return parsed

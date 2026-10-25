@@ -113,6 +113,12 @@ def _required(value: str, label: str) -> None:
         raise ProtocolViolation(f"{label} must be a nonempty string")
 
 
+def _identity(value: str, label: str) -> None:
+    _required(value, label)
+    if value != value.strip():
+        raise ProtocolViolation(f"{label} must not contain surrounding whitespace")
+
+
 def _stance(value: object, label: str, *, nullable: bool = False) -> None:
     if type(value) is not bool and not (nullable and value is None):
         raise ProtocolViolation(f"{label} must be an explicit boolean"
@@ -142,6 +148,7 @@ def _core(position: CorePosition, task: DeliberationTask) -> None:
 def _objection(obj: SpecialistObjection, task: DeliberationTask, expected: str) -> None:
     if not isinstance(obj, SpecialistObjection):
         raise ProtocolViolation("Specialist did not return a SpecialistObjection")
+    _identity(obj.specialist_id, "specialist ID")
     if obj.specialist_id != expected or obj.specialist_id.casefold() == "core":
         raise ProtocolViolation("Specialist identity mismatch or impersonation")
     if obj.proposition_id != task.proposition_id:
@@ -160,7 +167,7 @@ def _evidence(
     if result.proposition_id != task.proposition_id:
         raise ProtocolViolation("Verifier proposition does not match task")
     _stance(result.supports, "verified stance", nullable=True)
-    _required(result.verifier_id, "verifier identity")
+    _identity(result.verifier_id, "verifier identity")
     if result.verifier_id.casefold() in {"core", *(s.casefold() for s in specialist_ids)}:
         raise ProtocolViolation("Independent verifier cannot be Core or a specialist")
     _required(result.rationale, "verifier rationale")
@@ -201,7 +208,7 @@ class CoreDeliberationEngine:
 
         ids = [specialist.specialist_id for specialist in specialists]
         for name in ids:
-            _required(name, "specialist ID")
+            _identity(name, "specialist ID")
             if name.casefold() == "core":
                 raise ProtocolViolation("Specialist may not impersonate Core")
         if len({name.casefold() for name in ids}) != len(ids):
