@@ -21,10 +21,15 @@ class StateEvent:
     revision: int
 
     def validate(self) -> None:
-        if not self.event_id.strip() or not self.family.strip() or not self.key.strip():
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (self.event_id, self.family, self.key)
+        ):
             raise HandoffProtocolError("event_id, family, and key are required")
-        if self.revision < 1:
-            raise HandoffProtocolError("revision must be positive")
+        if not isinstance(self.value, str):
+            raise HandoffProtocolError("event value must be a string")
+        if type(self.revision) is not int or self.revision < 1:
+            raise HandoffProtocolError("revision must be a positive integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +41,15 @@ class ContinuityCase:
     expected_value: str
 
     def validate(self) -> None:
-        if not self.case_id.strip() or not self.family.strip():
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (self.case_id, self.family)
+        ):
             raise HandoffProtocolError("case_id and family are required")
+        if not isinstance(self.query_key, str) or not self.query_key.strip():
+            raise HandoffProtocolError("query_key is required")
+        if not isinstance(self.expected_value, str):
+            raise HandoffProtocolError("expected_value must be a string")
         if not self.events:
             raise HandoffProtocolError("case requires stage-A events")
         for event in self.events:
@@ -47,6 +59,9 @@ class ContinuityCase:
         revisions = [event.revision for event in self.events]
         if len(revisions) != len(set(revisions)):
             raise HandoffProtocolError("event revisions must be unique within a case")
+        event_ids = [event.event_id for event in self.events]
+        if len(event_ids) != len(set(event_ids)):
+            raise HandoffProtocolError("event_id values must be unique within a case")
         current = max(self.events, key=lambda event: event.revision)
         if current.key != self.query_key or current.value != self.expected_value:
             raise HandoffProtocolError(
@@ -159,8 +174,12 @@ def run_case(case: ContinuityCase, condition: str) -> dict[str, object]:
         for event in case.events
         if event.key == case.query_key and event.value != case.expected_value
     }
-    correct = answer == case.expected_value
-    stale_error = answer in stale_values and not correct
+    # A RESET condition has no state. Its literal UNKNOWN response must not be
+    # scored as continuity when a test case's true value is also "UNKNOWN".
+    correct = condition != "RESET" and answer == case.expected_value
+    # Missing state cannot be evidence of an old value being remembered, even
+    # if the reset sentinel matches a superseded literal value.
+    stale_error = condition != "RESET" and answer in stale_values and not correct
 
     return {
         "case_id": case.case_id,
