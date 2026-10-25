@@ -92,6 +92,13 @@ MESSAGES=(
 
 
 class LocalNeuralBackendTests(unittest.TestCase):
+    def test_deeply_nested_http_json_fails_with_domain_error(self):
+        # Valid JSON well below the HTTP byte limit can exhaust decoder depth.
+        nested = ("[" * 25000 + "0" + "]" * 25000).encode("ascii")
+        self.assertLess(len(nested), 65536)
+        with self.assertRaisesRegex(LoopbackBackendError, "invalid JSON"):
+            _parse_json(nested)
+
     def test_ambiguous_or_nonstandard_http_json_fails_closed(self):
         for response in (
             b'{"object":"list","object":"chat.completion"}',
