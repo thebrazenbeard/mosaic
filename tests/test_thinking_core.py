@@ -141,6 +141,25 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
         with self.assertRaisesRegex(ProtocolViolation, "verifier"):
             CoreDeliberationEngine().deliberate(task(),core,[],StubVerifier(True,issuer="core"))
 
+    def test_whitespace_padded_core_identity_cannot_self_verify(self):
+        core=StubCore(pos(True),pos(True))
+        with self.assertRaisesRegex(ProtocolViolation, "verifier identity"):
+            CoreDeliberationEngine().deliberate(
+                task(),core,[],StubVerifier(True,issuer=" core "))
+
+    def test_whitespace_padded_specialist_identity_is_rejected(self):
+        core=StubCore(pos(True),pos(True))
+        with self.assertRaisesRegex(ProtocolViolation, "specialist ID"):
+            CoreDeliberationEngine().deliberate(
+                task(),core,[StubSpecialist(" core ",True)])
+
+    def test_whitespace_padded_alias_cannot_bypass_duplicate_check(self):
+        core=StubCore(pos(True),pos(True))
+        with self.assertRaisesRegex(ProtocolViolation, "specialist ID"):
+            CoreDeliberationEngine().deliberate(
+                task(),core,[StubSpecialist("auditor",True),
+                             StubSpecialist(" auditor ",True)])
+
     def test_verifier_must_bind_evidence_to_subject(self):
         class InvalidVerifier:
             def examine(self, task, position, objections):
