@@ -52,6 +52,8 @@ class ResidencyEnvelope:
         if self.boot_core_gpu_bytes < 0:
             raise ResidencyModelError("boot_core_gpu_bytes must be non-negative")
         for item in self.specialists:
+            if not isinstance(item, SpecialistResidency):
+                raise ResidencyModelError("specialists must contain specialist records")
             item.gpu_bytes()
         # Validate specialist_id shape before constructing a set; malformed
         # unhashable IDs must fail with the domain error, not a raw TypeError.
@@ -90,6 +92,8 @@ def evaluate_swap_sequence(
     steps: list[dict[str, object]] = []
     max_resident = 0
     for index, specialist_id in enumerate(ordered):
+        if not isinstance(specialist_id, str) or not specialist_id.strip():
+            raise ResidencyModelError("sequence items must be specialist IDs")
         specialist = by_id.get(specialist_id)
         if specialist is None:
             raise ResidencyModelError(f"unknown specialist in sequence: {specialist_id}")
