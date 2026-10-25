@@ -113,6 +113,12 @@ def _required(value: str, label: str) -> None:
         raise ProtocolViolation(f"{label} must be a nonempty string")
 
 
+def _identity(value: str, label: str) -> None:
+    _required(value, label)
+    if value != value.strip() or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ProtocolViolation(f"{label} is not a canonical identity")
+
+
 def _stance(value: object, label: str, *, nullable: bool = False) -> None:
     if type(value) is not bool and not (nullable and value is None):
         raise ProtocolViolation(f"{label} must be an explicit boolean"
@@ -127,21 +133,31 @@ def _task(task: DeliberationTask) -> None:
     _stance(task.protected_effect, "protected_effect")
 
 
-def _core(position: CorePosition, task: DeliberationTask) -> None:
+def _core(
+    position: CorePosition, task: DeliberationTask,
+    *, allowed_acknowledgments: set[str],
+) -> None:
     if not isinstance(position, CorePosition):
         raise ProtocolViolation("Core did not return a CorePosition")
     if position.proposition_id != task.proposition_id:
         raise ProtocolViolation("Core proposition is not the task proposition")
     _stance(position.supports, "core stance")
     _required(position.reasoning, "core reasoning")
-    if any(not isinstance(s, str) or not s.strip()
-           for s in position.acknowledged_objections):
-        raise ProtocolViolation("Invalid acknowledged objection ID")
+    acknowledgments = position.acknowledged_objections
+    if type(acknowledgments) is not tuple:
+        raise ProtocolViolation("Acknowledged objection IDs must be a tuple")
+    for name in acknowledgments:
+        _identity(name, "acknowledged objection ID")
+    if len({name.casefold() for name in acknowledgments}) != len(acknowledgments):
+        raise ProtocolViolation("Duplicate acknowledged objection ID")
+    if not set(acknowledgments) <= allowed_acknowledgments:
+        raise ProtocolViolation("Core acknowledged an unknown or unreviewed specialist")
 
 
 def _objection(obj: SpecialistObjection, task: DeliberationTask, expected: str) -> None:
     if not isinstance(obj, SpecialistObjection):
         raise ProtocolViolation("Specialist did not return a SpecialistObjection")
+    _identity(obj.specialist_id, "specialist ID")
     if obj.specialist_id != expected or obj.specialist_id.casefold() == "core":
         raise ProtocolViolation("Specialist identity mismatch or impersonation")
     if obj.proposition_id != task.proposition_id:
@@ -160,7 +176,7 @@ def _evidence(
     if result.proposition_id != task.proposition_id:
         raise ProtocolViolation("Verifier proposition does not match task")
     _stance(result.supports, "verified stance", nullable=True)
-    _required(result.verifier_id, "verifier identity")
+    _identity(result.verifier_id, "verifier identity")
     if result.verifier_id.casefold() in {"core", *(s.casefold() for s in specialist_ids)}:
         raise ProtocolViolation("Independent verifier cannot be Core or a specialist")
     _required(result.rationale, "verifier rationale")
@@ -196,19 +212,21 @@ class CoreDeliberationEngine:
         if not isinstance(task, DeliberationTask):
             raise ProtocolViolation("Task type mismatch")
         _task(task)
-        initial = core.think(task)
-        _core(initial, task)
-
-        ids = [specialist.specialist_id for specialist in specialists]
+        # Reject malformed reviewer rosters before calling a neural inference
+        # backend or any specialist callback. Neither is a safe preflight probe.
+        reviewers = tuple(specialists)
+        ids = [specialist.specialist_id for specialist in reviewers]
         for name in ids:
-            _required(name, "specialist ID")
+            _identity(name, "specialist ID")
             if name.casefold() == "core":
                 raise ProtocolViolation("Specialist may not impersonate Core")
         if len({name.casefold() for name in ids}) != len(ids):
             raise ProtocolViolation("duplicate specialist identity")
 
+        initial = core.think(task)
+        _core(initial, task, allowed_acknowledgments=set())
         objections = tuple(
-            specialist.review(task, initial) for specialist in specialists
+            specialist.review(task, initial) for specialist in reviewers
         )
         for obj, expected in zip(objections, ids, strict=True):
             _objection(obj, task, expected)
@@ -231,7 +249,7 @@ class CoreDeliberationEngine:
             core.reconsider(task, initial, objections, evidence)
             if needs_reconsideration else initial
         )
-        _core(final, task)
+        _core(final, task, allowed_acknowledgments=set(ids))
 
         acknowledged = set(final.acknowledged_objections)
         missing = {obj.specialist_id for obj in dissent} - acknowledged

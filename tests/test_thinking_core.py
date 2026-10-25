@@ -186,6 +186,45 @@ class ThinkingCoreDecisionTests(unittest.TestCase):
             task(),core,[StubSpecialist("auditor",False),StubSpecialist("critic",False)])
         self.assertEqual(result.status,DecisionStatus.HOLD_UNACKNOWLEDGED_OBJECTION)
 
+    def test_invalid_reviewer_preflight_precedes_core_inference(self):
+        for reviewers in (
+            [StubSpecialist("core", True)],
+            [StubSpecialist("auditor", True), StubSpecialist("AUDITOR", False)],
+            [StubSpecialist(" core ", True)],
+            [StubSpecialist("auditor ", True)],
+        ):
+            with self.subTest(reviewers=[x.specialist_id for x in reviewers]):
+                core = StubCore(pos(True), pos(True))
+                with self.assertRaises(ProtocolViolation):
+                    CoreDeliberationEngine().deliberate(task(), core, reviewers)
+                self.assertEqual(core.call_log, [])
+                self.assertTrue(all(x.call_count == 0 for x in reviewers))
+
+    def test_initial_and_final_core_cannot_fabricate_acknowledgments(self):
+        cases = (
+            (pos(True, acknowledged=("auditor",)), pos(True), []),
+            (pos(True), pos(False, acknowledged=("auditor", "ghost")),
+             [StubSpecialist("auditor", False)]),
+            (pos(True), pos(False, acknowledged=("auditor", "auditor")),
+             [StubSpecialist("auditor", False)]),
+            (pos(True), pos(False, acknowledged="auditor"),
+             [StubSpecialist("auditor", False)]),
+        )
+        for initial, revised, reviewers in cases:
+            with self.subTest(initial=initial, revised=revised):
+                with self.assertRaises(ProtocolViolation):
+                    CoreDeliberationEngine().deliberate(
+                        task(), StubCore(initial, revised), reviewers
+                    )
+
+    def test_verifier_whitespace_impersonation_is_invalid(self):
+        core = StubCore(pos(True), pos(True))
+        with self.assertRaises(ProtocolViolation):
+            CoreDeliberationEngine().deliberate(
+                task(), core, [StubSpecialist("auditor", True)],
+                StubVerifier(True, issuer=" auditor ")
+            )
+
     def test_dispute_record_is_reproducible_and_conveys_uncertainty(self):
         core=StubCore(pos(True),pos(False,acknowledged=("auditor",)))
         a=CoreDeliberationEngine().deliberate(task(),core,[StubSpecialist("auditor",False)])
