@@ -44,8 +44,11 @@ It is also not HC-Brain. Concepts may later be borrowed where useful, but Mosaic
 `main` now contains deterministic Python harnesses under `runtime/` with tests under `tests/` for:
 
 - analytical residency accounting;
+- a safety-gated, **not-yet-live-qualified** GPU-router load/unload probe (`experiments/p0_router_probe.py`);
 - state handoff / continuity protocol mechanics;
-- the frozen P1 comparison cases across RESET, MOSAIC STATE, FULL HISTORY, and ORDINARY RETRIEVAL conditions.
+- the frozen P1 comparison cases across RESET, MOSAIC STATE, FULL HISTORY, and ORDINARY RETRIEVAL conditions;
+- an offline three-arm challenge scorer (`runtime/challenge_eval.py`) whose two-call V1 rejects uncounted learned-critic costs.
+- a separate [V2 learned-critic cost-control protocol](experiments/MOSAIC_LEARNED_CRITIC_COST_CONTROL_V2.md) and scorer (`runtime/challenge_eval_v2.py`) for caller-reported, three-call matched comparisons; neither authenticates model identity or measured compute.
 
 Those harnesses make parts of the research protocol executable; they are not a trained Mosaic model, do not demonstrate real specialist unloading/swapping on an accelerator, and do not establish a Mosaic P1 pass. The model partition architecture, training recipe, and empirical capability claims remain research subjects.
 
