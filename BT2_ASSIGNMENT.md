@@ -16,7 +16,7 @@ Mosaic tests whether a persistent neural Boot/Core and swappable specialized lea
 
 Read [`CURRENT.md`](CURRENT.md), then exact live `main` and open PR heads. In particular, inspect merged [security containment PR #13](https://github.com/thebrazenbeard/mosaic/pull/13) before attempting to promote historical model research PRs #10–#12. Those draft heads were based on an unsafe editor-startup source tree; stale branch CI or an earlier source-only result cannot waive containment review.
 
-Canonical code currently provides analytical residency accounting and deterministic handoff comparison harnesses. The neural Core, actual specialist checkpoints, accelerator swap measurements, and cross-specialist continuity are **not qualified**. A source adaptation of Mosaic handoff in `vera-mono` is not a live Mosaic service or evidence of identity continuity.
+Canonical code provides analytical residency accounting, deterministic handoff comparison, and guarded thinking-Core/loopback inference source interfaces (merged PRs #16, #18, #19, #20). These interfaces can call an already-serving local model but do not constitute a qualified installed Mosaic neural Core. Actual specialist checkpoints, authenticated model identity, accelerator swap measurements, and cross-specialist continuity are **not qualified**. A source adaptation of Mosaic handoff in `vera-mono` is not a live Mosaic service or evidence of identity continuity.
 
 ## Worker orientation
 
