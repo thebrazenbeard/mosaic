@@ -111,6 +111,23 @@ class ChallengeEvalTests(unittest.TestCase):
         with self.assertRaises(ChallengeEvalError):
             evaluate_paired(supplied)
 
+    def test_rejects_unaccounted_learned_critic_cost_in_two_call_schema(self):
+        for source in ("learned", "mixed"):
+            supplied = fixture()
+            supplied["challenge_source"] = source
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(ChallengeEvalError, "critic.*calls"):
+                    evaluate_paired(supplied)
+
+    def test_rejects_success_claim_without_an_inference_or_tokens(self):
+        for arm_name in ("core_only", "neutral_second_pass", "challenged"):
+            for field in ("model_calls", "total_tokens"):
+                supplied = fixture()
+                supplied["cases"][0][arm_name][field] = 0
+                with self.subTest(arm=arm_name, field=field):
+                    with self.assertRaisesRegex(ChallengeEvalError, "ok status"):
+                        evaluate_paired(supplied)
+
     def test_canonical_digest_is_stable_to_mapping_key_order_not_outcome_changes(self):
         a = fixture()
         b = {key: a[key] for key in reversed(tuple(a.keys()))}
