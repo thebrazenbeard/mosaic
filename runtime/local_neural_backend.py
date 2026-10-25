@@ -50,6 +50,10 @@ class LoopbackCoreInference:
             raise ValueError("port must be integer 1..65535")
         if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 128:
             raise ValueError("model_id is required and bounded")
+        try:
+            model_id.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ValueError("model_id contains invalid Unicode") from exc
         if (type(timeout_seconds) not in (int, float)
                 or not 0 < timeout_seconds <= 120):
             raise ValueError("timeout_seconds must be 0..120 seconds")
@@ -102,11 +106,27 @@ class LoopbackCoreInference:
         if (
             result.get("object") != "list"
             or not isinstance(rows, list)
-            or len(rows) != 1
-            or not isinstance(rows[0], dict)
-            or rows[0].get("id") != self.model_id
-            or rows[0].get("object") != "model"
+            or not 1 <= len(rows) <= 128
         ):
+            raise LoopbackBackendError("Unexpected advertised model identifier")
+        # Ollama's OpenAI-compatible catalog includes *all* installed models.
+        # Select the one pinned by the caller without accepting ambiguous IDs
+        # or promoting server-supplied metadata into model authentication.
+        seen: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict) or row.get("object") != "model":
+                raise LoopbackBackendError("Unexpected advertised model identifier")
+            model_id = row.get("id")
+            if (type(model_id) is not str or not model_id.strip()
+                    or model_id != model_id.strip() or len(model_id) > 128
+                    or model_id in seen):
+                raise LoopbackBackendError("Ambiguous advertised model identifier")
+            try:
+                model_id.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise LoopbackBackendError("Invalid Unicode in advertised model identifier") from exc
+            seen.add(model_id)
+        if self.model_id not in seen:
             raise LoopbackBackendError("Unexpected advertised model identifier")
         return {
             "status": "ENDPOINT_MODEL_ID_ADVERTISED_NOT_BEHAVIOR_VERIFIED",
