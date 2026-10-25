@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from .strict_json import loads as strict_json_loads
 
 
 class LoopbackBackendError(RuntimeError):
@@ -22,7 +23,7 @@ class _RejectRedirect(HTTPRedirectHandler):
 
 def _parse_json(body: bytes) -> dict[str, object]:
     try:
-        parsed = json.loads(body.decode("utf-8"))
+        parsed = strict_json_loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
         raise LoopbackBackendError("Model endpoint returned invalid JSON") from exc
     if not isinstance(parsed, dict):

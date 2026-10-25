@@ -14,6 +14,7 @@ from typing import Callable, Mapping, Sequence
 from .thinking_core import (
     CorePosition, DeliberationTask, EvidenceVerdict, SpecialistObjection
 )
+from .strict_json import loads as strict_json_loads
 
 
 class NeuralOutputError(ValueError):
@@ -38,7 +39,7 @@ def _parse_position(raw: str, task: DeliberationTask) -> CorePosition:
     if not isinstance(raw, str):
         raise NeuralOutputError("Core inference did not return JSON text")
     try:
-        value = json.loads(raw)
+        value = strict_json_loads(raw)
     except (ValueError, TypeError) as exc:
         raise NeuralOutputError("Core inference output is not strict JSON") from exc
     if not isinstance(value, dict) or set(value) != {

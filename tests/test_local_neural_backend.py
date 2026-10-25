@@ -6,7 +6,7 @@ import json
 import unittest
 
 from runtime.local_neural_backend import (
-    LoopbackCoreInference, LoopbackBackendError
+    LoopbackCoreInference, LoopbackBackendError, _parse_json
 )
 from runtime.neural_core import NeuralThinkingCore, NeuralOutputError
 from runtime.thinking_core import DeliberationTask
@@ -92,6 +92,17 @@ MESSAGES=(
 
 
 class LocalNeuralBackendTests(unittest.TestCase):
+    def test_ambiguous_or_nonstandard_http_json_fails_closed(self):
+        for response in (
+            b'{"object":"list","object":"chat.completion"}',
+            b'{"choices":[{"index":0,"index":1}]}',
+            b'{"number":NaN}',
+            b'{"number":Infinity}',
+        ):
+            with self.subTest(response=response):
+                with self.assertRaisesRegex(LoopbackBackendError, "JSON"):
+                    _parse_json(response)
+
     def test_real_loopback_http_contract_calls_core_inference(self):
         with mock_local_service() as (port,service):
             backend=LoopbackCoreInference(port=port)

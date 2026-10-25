@@ -76,6 +76,16 @@ class NeuralThinkingCoreTests(unittest.TestCase):
         with self.assertRaisesRegex(NeuralOutputError,"JSON"):
             NeuralThinkingCore(backend).think(self.task)
 
+    def test_duplicate_core_json_keys_fail_closed(self):
+        # json.loads normally accepts the final duplicate value; Mosaic cannot
+        # call a contradictory model response an unambiguous Core position.
+        ambiguous = ('{"proposition_id":"accepted","supports":true,'
+                     '"supports":false,"reasoning":"contradictory",'
+                     '"acknowledged_objections":[]}')
+        backend = CapturingGenerator([ambiguous])
+        with self.assertRaisesRegex(NeuralOutputError, "JSON"):
+            NeuralThinkingCore(backend).think(self.task)
+
     def test_model_cannot_change_case_identity(self):
         backend=CapturingGenerator([json.dumps({
             "proposition_id":"other","supports":True,"reasoning":"Mismatch",
