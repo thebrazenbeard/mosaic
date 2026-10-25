@@ -6,7 +6,13 @@ These intentionally expose presently unguarded input/provenance invariants.
 import math
 import unittest
 
-from runtime.handoff import ContinuityCase, HandoffProtocolError, StateEvent, run_case
+from runtime.handoff import (
+    ContinuityCase,
+    HandoffProtocolError,
+    StateEvent,
+    run_benchmark,
+    run_case,
+)
 from runtime.residency import (
     ResidencyEnvelope,
     ResidencyModelError,
@@ -16,6 +22,17 @@ from runtime.residency import (
 
 
 class HandoffIntegrityTests(unittest.TestCase):
+    def test_unhashable_case_id_rejected_before_benchmark_dedup(self):
+        case = ContinuityCase(
+            case_id=[],
+            family="CORRECTION",
+            events=(StateEvent("e1", "CORRECTION", "claim", "current", 1),),
+            query_key="claim",
+            expected_value="current",
+        )
+        with self.assertRaisesRegex(HandoffProtocolError, "case_id"):
+            run_benchmark((case,))
+
     def test_duplicate_event_ids_cannot_represent_distinct_revisions(self):
         case = ContinuityCase(
             case_id="duplicate-provenance",
@@ -90,6 +107,24 @@ class HandoffIntegrityTests(unittest.TestCase):
 
 
 class ResidencyInputIntegrityTests(unittest.TestCase):
+    def test_malformed_specialist_object_rejected_with_domain_error(self):
+        envelope = ResidencyEnvelope(
+            vram_ceiling_bytes=100,
+            boot_core_gpu_bytes=0,
+            specialists=("not-a-specialist",),
+        )
+        with self.assertRaisesRegex(ResidencyModelError, "specialist"):
+            evaluate_swap_sequence(envelope, ["part"])
+
+    def test_unhashable_sequence_item_rejected_with_domain_error(self):
+        envelope = ResidencyEnvelope(
+            vram_ceiling_bytes=100,
+            boot_core_gpu_bytes=0,
+            specialists=(SpecialistResidency("part", 1, 1, 0, 0, 0),),
+        )
+        with self.assertRaisesRegex(ResidencyModelError, "sequence"):
+            evaluate_swap_sequence(envelope, [[]])
+
     def test_unhashable_specialist_id_rejected_with_domain_error(self):
         envelope = ResidencyEnvelope(
             vram_ceiling_bytes=100,
