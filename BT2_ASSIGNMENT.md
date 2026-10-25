@@ -10,30 +10,20 @@ Mosaic is a **Build Team Two (BT2) project assignment**.
 - Pull requests remain the review/integration surface for Mosaic source changes.
 - Do not merge, deploy, publish trained artifacts, spend paid compute, or make other protected effects without current owner authority.
 
-## Project purpose
+## Project purpose and currentness
 
-Mosaic explores whether one logical AI agent can have a total learned capability pool substantially larger than the model parameters currently resident in accelerator memory.
+Mosaic tests whether a persistent neural Boot/Core and swappable specialized learned capacity can behave as one logical agent while keeping active accelerator memory below its total capability pool. Around 20B logical parameters and 4 GB VRAM are motivating hypotheses, not established implementation limits.
 
-The originating target is a roughly 20B-class logical agent operating on constrained hardware by composing a persistent Boot/Core with swappable specialist model partitions.
+Read [`CURRENT.md`](CURRENT.md), then exact live `main` and open PR heads. In particular, inspect merged [security containment PR #13](https://github.com/thebrazenbeard/mosaic/pull/13) before attempting to promote historical model research PRs #10–#12. Those draft heads were based on an unsafe editor-startup source tree; stale branch CI or an earlier source-only result cannot waive containment review.
 
-## Current source state
+Canonical code currently provides analytical residency accounting and deterministic handoff comparison harnesses. The neural Core, actual specialist checkpoints, accelerator swap measurements, and cross-specialist continuity are **not qualified**. A source adaptation of Mosaic handoff in `vera-mono` is not a live Mosaic service or evidence of identity continuity.
 
-- Repository: `thebrazenbeard/mosaic`
-- Canonical branch: `main`
-- Active foundation branch: `project/foundation-v1`
-- Active review: Draft PR #1
-- Foundation branch head at this record: `f13a1740a6c3e0040af35a47582babd9a44e20ee`
+## Worker orientation
 
-The exploratory architecture and experiment designs are intentionally not canonical merely because they exist on the draft branch.
+1. Fresh-read `README.md`, `CURRENT.md`, default-branch head, open PRs and dependency/stacking relationships.
+2. Read `runtime/`, `tests/`, and predeclared experiments under `experiments/` before asserting capability.
+3. Check security provenance and any source/startup loaders before running workspace tasks, editor commands, or dependency scripts.
+4. Keep documented architecture, test results, real model probes, hardware measurements, and independent qualification in separate evidence classes.
+5. Preserve exact head SHA, test commands, hostile findings and unresolved review disagreements in PR review/BT2 coordination.
 
-## BT2 control-chat orientation rule
-
-A fresh BT2 control chat should read, in order:
-
-1. `README.md`
-2. `BT2_ASSIGNMENT.md`
-3. `CURRENT.md`
-4. Draft PR #1 and its exact current head
-5. On that branch: `docs/PROJECT_SEED.md`, `docs/ARCHITECTURE_V0.md`, `docs/RESEARCH_PLAN.md`, and `experiments/`
-
-Do not infer current project state from conversation memory when these surfaces are available.
+The older `project/foundation-v1` / PR #1 orientation was a historical foundation snapshot; do not mistake its September 2026 head for current source authority.
