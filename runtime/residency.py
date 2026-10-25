@@ -21,18 +21,19 @@ class SpecialistResidency:
 
     def gpu_bytes(self) -> int:
         values = (
+            self.package_bytes,
             self.weight_bytes,
             self.kv_cache_bytes,
             self.activation_bytes,
             self.workspace_bytes,
         )
-        if not self.specialist_id.strip():
+        if not isinstance(self.specialist_id, str) or not self.specialist_id.strip():
             raise ResidencyModelError("specialist_id is required")
+        if any(type(value) is not int for value in values):
+            raise ResidencyModelError("residency byte counts must be integers")
         if any(value < 0 for value in values):
             raise ResidencyModelError("residency byte counts must be non-negative")
-        if self.package_bytes < 0:
-            raise ResidencyModelError("package_bytes must be non-negative")
-        return sum(values)
+        return sum(values[1:])
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,15 +43,21 @@ class ResidencyEnvelope:
     specialists: tuple[SpecialistResidency, ...]
 
     def validate(self) -> None:
+        if type(self.vram_ceiling_bytes) is not int:
+            raise ResidencyModelError("vram_ceiling_bytes must be an integer")
         if self.vram_ceiling_bytes <= 0:
             raise ResidencyModelError("vram_ceiling_bytes must be positive")
+        if type(self.boot_core_gpu_bytes) is not int:
+            raise ResidencyModelError("boot_core_gpu_bytes must be an integer")
         if self.boot_core_gpu_bytes < 0:
             raise ResidencyModelError("boot_core_gpu_bytes must be non-negative")
+        for item in self.specialists:
+            item.gpu_bytes()
+        # Validate specialist_id shape before constructing a set; malformed
+        # unhashable IDs must fail with the domain error, not a raw TypeError.
         ids = [item.specialist_id for item in self.specialists]
         if len(ids) != len(set(ids)):
             raise ResidencyModelError("specialist_id values must be unique")
-        for item in self.specialists:
-            item.gpu_bytes()
 
 
 def canonical_json_sha256(value: Mapping[str, object]) -> str:
