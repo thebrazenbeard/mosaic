@@ -22,6 +22,46 @@ from runtime.residency import (
 
 
 class HandoffIntegrityTests(unittest.TestCase):
+    def test_valid_non_ascii_text_remains_supported(self):
+        case = ContinuityCase(
+            case_id="unicode-ok",
+            family="CORRECTION",
+            events=(StateEvent("e1", "CORRECTION", "claim", "Renée 🚀", 1),),
+            query_key="claim",
+            expected_value="Renée 🚀",
+        )
+        self.assertTrue(run_case(case, "MOSAIC_STATE")["correct"])
+
+    def test_unpaired_unicode_surrogate_in_event_value_fails_with_domain_error(self):
+        case = ContinuityCase(
+            case_id="surrogate-event",
+            family="CORRECTION",
+            events=(StateEvent("e1", "CORRECTION", "claim", "\ud800", 1),),
+            query_key="claim",
+            expected_value="\ud800",
+        )
+        with self.assertRaisesRegex(HandoffProtocolError, "UTF-8"):
+            run_case(case, "MOSAIC_STATE")
+
+    def test_unpaired_unicode_surrogate_in_metadata_fails_before_result(self):
+        for field in ("event_id", "family", "key", "case_id", "query_key"):
+            with self.subTest(field=field):
+                event = {"event_id": "e1", "family": "CORRECTION",
+                         "key": "claim", "value": "current", "revision": 1}
+                case_fields = {"case_id": "unicode-input", "family": "CORRECTION",
+                               "query_key": "claim", "expected_value": "current"}
+                if field in event:
+                    event[field] = "\ud800"
+                    if field == "family":
+                        case_fields["family"] = "\ud800"
+                    if field == "key":
+                        case_fields["query_key"] = "\ud800"
+                else:
+                    case_fields[field] = "\ud800"
+                case = ContinuityCase(events=(StateEvent(**event),), **case_fields)
+                with self.assertRaisesRegex(HandoffProtocolError, "UTF-8"):
+                    run_case(case, "MOSAIC_STATE")
+
     def test_unhashable_case_id_rejected_before_benchmark_dedup(self):
         case = ContinuityCase(
             case_id=[],
