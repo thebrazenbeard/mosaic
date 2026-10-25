@@ -76,6 +76,13 @@ class NeuralThinkingCoreTests(unittest.TestCase):
         with self.assertRaisesRegex(NeuralOutputError,"JSON"):
             NeuralThinkingCore(backend).think(self.task)
 
+    def test_deeply_nested_model_json_fails_with_domain_error(self):
+        nested = "[" * 25000 + "0" + "]" * 25000
+        self.assertLess(len(nested.encode("utf-8")), 65536)
+        backend = CapturingGenerator([nested])
+        with self.assertRaisesRegex(NeuralOutputError, "JSON"):
+            NeuralThinkingCore(backend).think(self.task)
+
     def test_duplicate_core_json_keys_fail_closed(self):
         # json.loads normally accepts the final duplicate value; Mosaic cannot
         # call a contradictory model response an unambiguous Core position.
