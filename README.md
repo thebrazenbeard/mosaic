@@ -49,6 +49,12 @@ It is also not HC-Brain. Concepts may later be borrowed where useful, but Mosaic
 
 Those harnesses make parts of the research protocol executable; they are not a trained Mosaic model, do not demonstrate real specialist unloading/swapping on an accelerator, and do not establish a Mosaic P1 pass. The model partition architecture, training recipe, and empirical capability claims remain research subjects.
 
+### Sanitized thinking-Core research candidate (not yet `main`)
+
+A separate review branch, based on the editor-startup security containment in draft PR #13, recovers the legitimate reasoning-Core code without importing the older draft branches' startup tasks or disguised assets. `runtime/thinking_core.py` governs Core deliberation and specialist objections; `runtime/neural_core.py` defines strict model-produced reasoning and reconsideration; `runtime/local_neural_backend.py` is a bounded loopback-only adapter to an already-serving model. The Core remains a reasoning participant, not merely a router. Neither a model response nor specialist objection grants protected-effect authority.
+
+These are source interfaces and isolated regression tests, not an installed model or a measured capability improvement. The earlier live Core-with-scripted-critic comparison was 6/10 versus 6/10, with no net accuracy gain. Actual independent learned specialists, authenticated model weights, VRAM swapping, and neutral-second-pass held-out validation remain open. Do not merge the old unsanitized model PRs #10–#12 into this branch.
+
 See:
 
 - [Project Seed](docs/PROJECT_SEED.md)
