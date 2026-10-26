@@ -1,4 +1,5 @@
 import unittest
+import json
 from pathlib import Path
 import tempfile
 from unittest import mock
@@ -19,11 +20,14 @@ SUBJECTS = {
 
 
 class FakeRouter:
-    def __init__(self, *, preloaded=None, spoof=False, bad_core=False):
+    def __init__(self, *, preloaded=None, spoof=False, bad_core=False,
+                 invalid_reply=None, invalid_on_critic=False):
         self.loaded = preloaded
         self.events = []
         self.spoof = spoof
         self.bad_core = bad_core
+        self.invalid_reply = invalid_reply
+        self.invalid_on_critic = invalid_on_critic
         self.core_count = 0
 
     def statuses(self):
@@ -52,21 +56,68 @@ class FakeRouter:
     def request(self, path, payload):
         if path != "/v1/chat/completions" or payload["model"] != self.loaded:
             raise AssertionError("request to wrong model")
+        if payload.get("tools") != [] or payload.get("stream") is not False:
+            raise AssertionError("all inference calls must disable tools and streaming")
         model = self.loaded
         if model == "core-4b":
-            if payload.get("response_format") != {"type": "json_object"}:
-                raise AssertionError("Core requires strict JSON response mode")
+            fmt = payload.get("response_format")
+            if not isinstance(fmt, dict) or fmt.get("type") != "json_schema":
+                raise AssertionError("Core requires strict four-field schema mode")
+            schema = fmt.get("json_schema", {}).get("schema", {})
+            if (set(schema.get("properties", {})) != {
+                "proposition_id", "supports", "reasoning", "acknowledged_objections",
+            } or set(schema.get("required", [])) != set(schema["properties"])
+                    or schema.get("additionalProperties") is not False):
+                raise AssertionError("Core schema must match actual four-field contract")
+            question = json.loads(payload["messages"][1]["content"])
+            if question.get("proposition_id") != CASE["case_id"]:
+                raise AssertionError("unbound Core proposition")
             self.core_count += 1
-            content = ("not-json" if self.bad_core else
-                       ('{"supports":false}' if self.core_count == 2 else
-                        '{"supports":true}'))
+            content = ("not-json" if self.bad_core else json.dumps({
+                "proposition_id": CASE["case_id"],
+                "supports": False if self.core_count == 2 else True,
+                "reasoning": "A model-produced stance, not independent proof.",
+                "acknowledged_objections": [],
+            }))
         else:
             if "response_format" in payload:
                 raise AssertionError("critic output should not be forced into Core schema")
             content = "Neutral observation." if len(self.events) < 4 else "Adversarial objection."
-        return {"model": "wrong" if self.spoof else model,
-                "choices": [{"message": {"content": content}}],
-                "usage": {"prompt_tokens": 42, "completion_tokens": 8}}
+        reply = {"model": "wrong" if self.spoof else model,
+                 "choices": [{"index": 0, "finish_reason": "stop",
+                              "message": {"role": "assistant", "content": content}}],
+                 "usage": {"prompt_tokens": 42, "completion_tokens": 8}}
+        if self.invalid_reply and ((model == "critic-1p5b") == self.invalid_on_critic):
+            choice = reply["choices"][0]
+            message = choice["message"]
+            case = self.invalid_reply
+            if case == "missing_model":
+                del reply["model"]
+            elif case == "missing_index":
+                del choice["index"]
+            elif case == "bool_index":
+                choice["index"] = False
+            elif case == "wrong_index":
+                choice["index"] = 1
+            elif case == "multiple_choices":
+                reply["choices"].append(dict(choice))
+            elif case == "missing_role":
+                del message["role"]
+            elif case == "wrong_role":
+                message["role"] = "system"
+            elif case == "missing_finish":
+                del choice["finish_reason"]
+            elif case == "length_finish":
+                choice["finish_reason"] = "length"
+            elif case == "tool_finish":
+                choice["finish_reason"] = "tool_calls"
+            elif case == "tool_calls":
+                message["tool_calls"] = [{"id": "t1", "type": "function"}]
+            elif case == "empty_tool_calls":
+                message["tool_calls"] = []
+            else:
+                raise AssertionError(f"unexpected hostile variant: {case}")
+        return reply
 
 
 class LiveThreeArmTests(unittest.TestCase):
@@ -74,7 +125,7 @@ class LiveThreeArmTests(unittest.TestCase):
         traces = []
         doc, report = collect(
             router, CASE, "core-4b", "critic-1p5b", SUBJECTS,
-            "live-v2-01", "logic-v1", "2026-10-25T00:00:00Z", 12, traces,
+            "live-v2-01", "logic-v1", "2026-10-25T00:00:00Z", 192, traces,
         )
         return doc, report, traces
 
@@ -101,7 +152,31 @@ class LiveThreeArmTests(unittest.TestCase):
         self.assertEqual(doc["cases"][0]["core_only"]["status"],
                          "output_contract_error")
         self.assertFalse(report["neural_benefit_qualified"])
-        self.assertEqual(_parse_core("<think>not JSON</think>"),
+        self.assertEqual(_parse_core("<think>not JSON</think>", CASE["case_id"]),
+                         ("output_contract_error", None))
+
+    def test_actual_core_parser_rejects_identity_schema_and_reasoning_failures(self):
+        correct = {
+            "proposition_id": CASE["case_id"], "supports": True,
+            "reasoning": "Arithmetic supports the proposition.",
+            "acknowledged_objections": [],
+        }
+        self.assertEqual(_parse_core(json.dumps(correct), CASE["case_id"]),
+                         ("ok", True))
+        variants = (
+            {**correct, "proposition_id": "different"},
+            {**correct, "supports": 1},
+            {**correct, "reasoning": "   "},
+            {**correct, "extra": "injected"},
+            {**correct, "acknowledged_objections": ["critic", "critic"]},
+            {**correct, "acknowledged_objections": [""]},
+        )
+        for answer in variants:
+            with self.subTest(answer=answer):
+                self.assertEqual(_parse_core(json.dumps(answer), CASE["case_id"]),
+                                 ("output_contract_error", None))
+        self.assertEqual(_parse_core("```json\n"+json.dumps(correct)+"\n```",
+                                     CASE["case_id"]),
                          ("output_contract_error", None))
 
     def test_preloaded_router_rejected_without_effects(self):
@@ -118,6 +193,40 @@ class LiveThreeArmTests(unittest.TestCase):
         self.assertEqual(router.events, [("load", "core-4b"),
                                          ("unload", "core-4b")])
 
+    def test_core_and_critic_fail_closed_on_hostile_completion_envelopes(self):
+        variants = (
+            "missing_model", "missing_index", "bool_index", "wrong_index",
+            "multiple_choices", "missing_role", "wrong_role",
+            "missing_finish", "length_finish", "tool_finish",
+            "tool_calls",
+        )
+        for on_critic in (False, True):
+            for variant in variants:
+                with self.subTest(on_critic=on_critic,variant=variant):
+                    router = FakeRouter(invalid_reply=variant,
+                                        invalid_on_critic=on_critic)
+                    with self.assertRaises(LivePairError):
+                        self.run_one(router)
+                    self.assertIsNone(router.loaded)
+                    self.assertEqual(router.events, (
+                        [("load", "core-4b"), ("unload", "core-4b"),
+                         ("load", "critic-1p5b"), ("unload", "critic-1p5b")]
+                        if on_critic else
+                        [("load", "core-4b"), ("unload", "core-4b")]
+                    ))
+
+    def test_empty_tool_call_metadata_is_not_a_dispatched_tool(self):
+        # Match the production LoopbackCoreInference boundary: an empty list
+        # is metadata, while nonempty tool calls must fail on both models.
+        for on_critic in (False, True):
+            with self.subTest(on_critic=on_critic):
+                router = FakeRouter(invalid_reply="empty_tool_calls",
+                                    invalid_on_critic=on_critic)
+                doc, report, traces = self.run_one(router)
+                self.assertEqual(len(traces), 5)
+                self.assertIsNone(router.loaded)
+                self.assertFalse(report["neural_benefit_qualified"])
+
     def test_mismatched_model_path_rejected_before_loading(self):
         router = FakeRouter()
         router.paths = lambda: {"core-4b": "/wrong.gguf",
@@ -132,7 +241,7 @@ class LiveThreeArmTests(unittest.TestCase):
         same_weights["critic-1p5b"]["sha256"] = same_weights["core-4b"]["sha256"]
         with self.assertRaisesRegex(LivePairError, "distinct model file digests"):
             collect(router, CASE, "core-4b", "critic-1p5b", same_weights,
-                    "live-v2-01", "logic-v1", "2026-10-25T00:00:00Z", 12, [])
+                    "live-v2-01", "logic-v1", "2026-10-25T00:00:00Z", 192, [])
         self.assertEqual(router.events, [])
 
     def test_bad_metadata_and_bounded_case_rejected_before_model_calls(self):
@@ -152,8 +261,17 @@ class LiveThreeArmTests(unittest.TestCase):
                 with self.assertRaises(LivePairError):
                     collect(router, args["case"], "core-4b", "critic-1p5b", SUBJECTS,
                             args["experiment_id"], args["corpus_id"],
-                            args["frozen"], 12, [])
+                            args["frozen"], 192, [])
                 self.assertEqual(router.events, [])
+
+    def test_insufficient_four_field_token_budget_rejected_before_model_load(self):
+        router = FakeRouter()
+        for cap in (0, 32, 95, 385, True, "192"):
+            with self.subTest(cap=cap), self.assertRaises(LivePairError):
+                collect(router, CASE, "core-4b", "critic-1p5b", SUBJECTS,
+                        "live-v2-01", "logic-v1", "2026-10-25T00:00:00Z",
+                        cap, [])
+            self.assertEqual(router.events, [])
 
     def test_existing_output_file_cannot_be_overwritten_or_trigger_model_hashes(self):
         with tempfile.TemporaryDirectory() as folder:
