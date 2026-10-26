@@ -52,6 +52,10 @@ It is also not HC-Brain. Concepts may later be borrowed where useful, but Mosaic
 
 Those harnesses make parts of the research protocol executable; they are not a trained Mosaic model, do not demonstrate real specialist unloading/swapping on an accelerator, and do not establish a Mosaic P1 pass. The model partition architecture, training recipe, and empirical capability claims remain research subjects.
 
+### VN1 neural evidence (2026-10-26)
+
+[Recorded VN1 experiments](experiments/MOSAIC_LATENT_VN1_RESULT_20261026.md) establish a real hidden-tensor handoff between two separately loaded pretrained SmolLM2 models and a narrow task-specific learned handoff between separately executed tiny networks. The toy result beats a *truncated eight-record proxy*, but **ties the full-history control**; a 16-bit record is smaller when packed than the 32-byte toy latent. The [trained pretrained bridge pilot](experiments/MOSAIC_PRETRAINED_BRIDGE_PILOT1_20261026.md) scored **64/128**, exactly tied with both its full-history and reset controls. **Shared learned reasoning across pretrained specialists, and superiority over genuine retrieval, remain HOLD.** A new [BM25 lexical retrieval control](experiments/p1_bm25_retrieval_control.py) provides an explicit document-ranking comparator, with abstention and byte-budget accounting, but does not itself establish P1.
+
 ### Guarded thinking-Core source on `main`
 
 After the editor-startup security containment in merged PR #13, merged PR #16 added guarded reasoning-Core source without importing older branches' startup tasks or disguised assets. Subsequent PRs #18, #19, and #20 hardened reviewer identities, nested JSON error handling, and verifier-assertion boundaries. `runtime/thinking_core.py` governs Core deliberation and specialist objections; `runtime/neural_core.py` defines strict model-produced reasoning and reconsideration; `runtime/local_neural_backend.py` is a bounded loopback-only adapter to an already-serving model. The Core remains a reasoning participant, not merely a router. Neither a model response nor specialist objection grants protected-effect authority.
