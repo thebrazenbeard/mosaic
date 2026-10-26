@@ -5,6 +5,7 @@ This is consistency checking, NOT attestation that its host executed the models.
 
 from __future__ import annotations
 
+import copy
 import json
 from math import comb
 from pathlib import Path
@@ -65,6 +66,10 @@ class P0NeuralReceiptConsistencyTests(unittest.TestCase):
                              row["accuracies"]["ORDINARY_RETRIEVAL_8_RECORDS"] >= 0.05
                              and one_sided < 0.05)
         self.assertEqual(len(set(all_ids)), 128)
+        expected_status = ("NARROW_TOY_PASS" if all(
+            row["run_gate_pass"] for row in self.receipt["runs"])
+            else "HOLD_RETRIEVAL_ADVANTAGE_NOT_DEMONSTRATED")
+        self.assertEqual(self.receipt["experimental_status"], expected_status)
 
     def test_artifact_hashes_are_present_and_distinct(self):
         weights = self.receipt["manifest"]["weights"]
@@ -75,6 +80,21 @@ class P0NeuralReceiptConsistencyTests(unittest.TestCase):
         for digest in weights.values():
             self.assertEqual(len(digest), 64)
             int(digest, 16)
+
+    def test_success_status_cannot_survive_a_failing_run(self):
+        corrupted = copy.deepcopy(self.receipt)
+        row = corrupted["runs"][0]
+        row["neural_predictions"] = row["retrieval_predictions"][:]
+        row["accuracies"]["MOSAIC_LEARNED_STATE"] = row["accuracies"][
+            "ORDINARY_RETRIEVAL_8_RECORDS"]
+        row["wins"] = 0
+        row["losses"] = 0
+        row["one_sided_exact_p"] = 1.0
+        row["run_gate_pass"] = False
+        checker = type(self)("test_predictions_fully_reproduce_metrics_and_gate")
+        checker.receipt = corrupted
+        with self.assertRaises(AssertionError):
+            checker.test_predictions_fully_reproduce_metrics_and_gate()
 
 
 if __name__ == "__main__":

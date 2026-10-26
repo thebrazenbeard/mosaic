@@ -15,10 +15,12 @@ import random
 import subprocess
 import sys
 import time
+import gc
+import weakref
 from math import comb
 
 import torch
-from safetensors.torch import load_file, save_file
+from safetensors.torch import load_file, save as serialize_safetensors
 
 
 THRESHOLDS = (6, 7, 8, 9, 10, 11, 12, 13)
@@ -86,7 +88,30 @@ def frozen_root() -> Path:
     root = Path(os.environ["MOSAIC_LATENT_ROOT"]).resolve(strict=True)
     if not root.is_dir():
         raise RuntimeError("Experiment root missing")
-    return root / "toy_count_v1"
+    child = root / "toy_count_v1"
+    if child.is_symlink() or (child.exists() and not child.is_dir()):
+        raise RuntimeError("Unsafe experiment output directory")
+    return child
+
+
+def write_once_or_match(path: Path, payload: bytes) -> None:
+    """Never follow an existing output symlink or overwrite a prior receipt."""
+    parent = frozen_root()
+    if path.parent != parent or not parent.is_dir() or parent.is_symlink():
+        raise RuntimeError("Output parent differs from bounded experiment directory")
+    if path.is_symlink():
+        raise RuntimeError("Output path is a symlink")
+    try:
+        with path.open("xb") as stream:
+            stream.write(payload)
+    except FileExistsError:
+        prior = path.read_bytes()
+        # Early Windows receipts were written in text mode (CRLF). A replay
+        # compares canonical UTF-8 JSON while keeping those originals intact.
+        if path.suffix == ".json":
+            prior = prior.replace(b"\r\n", b"\n")
+        if path.is_symlink() or prior != payload:
+            raise RuntimeError(f"Existing output does not match: {path.name}")
 
 
 def file_sha(path: Path) -> str:
@@ -101,7 +126,7 @@ def train() -> None:
     torch.manual_seed(SEED)
     torch.set_num_threads(4)
     root = frozen_root()
-    root.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=False)
     data = episodes()
     initial_fingerprint = dataset_sha(data)
     source, target, retrieval, full, reset = build_models()
@@ -129,15 +154,16 @@ def train() -> None:
     filenames = ("source.safetensors", "target.safetensors",
                  "retrieval.safetensors", "full.safetensors", "reset.safetensors")
     for member, filename in zip(net, filenames):
-        save_file({k: v.detach().contiguous().cpu()
-                   for k, v in member.state_dict().items()}, str(root / filename))
+        write_once_or_match(root / filename, serialize_safetensors({
+            k: v.detach().contiguous().cpu()
+            for k, v in member.state_dict().items()}))
     manifest = {"benchmark": "P0-NEURAL-COUNT-01", "seed": SEED, "epochs": EPOCHS,
                 "train_count": len(data["train"]), "dev_count": len(data["dev"]),
                 "dataset_sha256": initial_fingerprint,
                 "training_seconds": round(time.monotonic() - start, 3),
                 "weights": {n: file_sha(root / n) for n in filenames}}
-    (root / "train_manifest.json").write_text(
-        json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
+    write_once_or_match(root / "train_manifest.json",
+                        json.dumps(manifest, sort_keys=True, indent=2).encode("utf-8"))
     print("TRAIN_COMPLETE " + json.dumps(manifest, sort_keys=True), flush=True)
 
 
@@ -169,8 +195,9 @@ def emit_source_state() -> None:
         if latent.shape != (64, 8) or not torch.isfinite(latent).all():
             raise RuntimeError("Non-finite or malformed continuous source state")
         path = root / f"{name}_state.safetensors"
-        save_file({"continuous_state": latent.contiguous(),
-                   "query_onehot": family.contiguous()}, str(path))
+        write_once_or_match(path, serialize_safetensors({
+            "continuous_state": latent.contiguous(),
+            "query_onehot": family.contiguous()}))
         print("SOURCE_EMITTED " + json.dumps({"run": name, "path_sha256": file_sha(path),
             "latent_min": float(latent.min()), "latent_max": float(latent.max()),
             "raw_records_persisted": False}, sort_keys=True), flush=True)
@@ -191,12 +218,12 @@ def target_only() -> None:
             predictions = logits.argmax(dim=1).tolist()
             zeros = target(torch.cat((torch.zeros_like(state), query), dim=1))
             rolled = target(torch.cat((torch.roll(state, 1, dims=0), query), dim=1))
-        (root / f"{name}_neural_predictions.json").write_text(
-            json.dumps(predictions), encoding="utf-8")
-        (root / f"{name}_ablations.json").write_text(json.dumps({
+        write_once_or_match(root / f"{name}_neural_predictions.json",
+                            json.dumps(predictions).encode("utf-8"))
+        write_once_or_match(root / f"{name}_ablations.json", json.dumps({
             "zero_state": zeros.argmax(dim=1).tolist(),
             "rolled_state": rolled.argmax(dim=1).tolist(),
-        }), encoding="utf-8")
+        }).encode("utf-8"))
         print("TARGET_PREDICTED " + json.dumps({"run": name, "count": len(predictions),
             "state_sha256": file_sha(root / f"{name}_state.safetensors")},
             sort_keys=True), flush=True)
@@ -215,6 +242,36 @@ def compare() -> None:
     root = frozen_root()
     data = episodes()
     manifest = verify_manifest(root, data)
+    # Read back both genuine learned checkpoint computations instead of trusting
+    # user-replaceable neural_predictions.json or source_latent.safetensors.
+    source = load_weights(model(16, 64, 32, 8), root / "source.safetensors")
+    for name in ("run_a", "run_b"):
+        raw, query, _ = features(data[name])
+        receipt = load_file(str(root / f"{name}_state.safetensors"))
+        if set(receipt) != {"continuous_state", "query_onehot"}:
+            raise RuntimeError(f"Unapproved state keys in {name}")
+        with torch.inference_mode():
+            expected = source(raw)
+        if not torch.equal(receipt["continuous_state"], expected):
+            raise RuntimeError(f"Source state does not match checkpoint + dataset: {name}")
+        if not torch.equal(receipt["query_onehot"], query):
+            raise RuntimeError(f"Target query does not match frozen case: {name}")
+    source_ref = weakref.ref(source)
+    del source
+    gc.collect()
+    if source_ref() is not None:
+        raise RuntimeError("Source model still resident before target verification")
+    target = load_weights(model(16, 64, 64, 2), root / "target.safetensors")
+    for name in ("run_a", "run_b"):
+        receipt = load_file(str(root / f"{name}_state.safetensors"))
+        with torch.inference_mode():
+            expected = target(torch.cat((receipt["continuous_state"],
+                                         receipt["query_onehot"]), dim=1)).argmax(1).tolist()
+        declared = json.loads((root / f"{name}_neural_predictions.json").read_text())
+        if expected != declared:
+            raise RuntimeError(f"Target predictions fail checkpoint replay: {name}")
+    del target
+    gc.collect()
     retrieval = load_weights(model(16, 64, 64, 2), root / "retrieval.safetensors")
     full = load_weights(model(24, 64, 64, 2), root / "full.safetensors")
     reset = load_weights(model(8, 64, 64, 2), root / "reset.safetensors")
@@ -225,6 +282,12 @@ def compare() -> None:
         ablations = json.loads((root / f"{name}_ablations.json").read_text())
         if len(neural) != len(label) or any(x not in (0, 1) for x in neural):
             raise RuntimeError("Invalid neural prediction count or label")
+        if set(ablations) != {"zero_state", "rolled_state"} or any(
+            len(ablations[condition]) != len(label) or any(
+                answer not in (0, 1) for answer in ablations[condition])
+            for condition in ("zero_state", "rolled_state")
+        ):
+            raise RuntimeError("Invalid ablation prediction count or label")
         with torch.inference_mode():
             retr = retrieval(torch.cat((raw[:, :8], query), dim=1)).argmax(1).tolist()
             history = full(torch.cat((raw, query), dim=1)).argmax(1).tolist()
@@ -257,8 +320,8 @@ def compare() -> None:
              else "HOLD_RETRIEVAL_ADVANTAGE_NOT_DEMONSTRATED",
              "not_pretrained_llm_p1": True, "eight_record_retrieval_only": True,
              "manifest": manifest, "runs": results}
-    (root / "results.json").write_text(json.dumps(final, sort_keys=True, indent=2),
-                                       encoding="utf-8")
+    write_once_or_match(root / "results.json",
+                        json.dumps(final, sort_keys=True, indent=2).encode("utf-8"))
     print("FINAL_METRICS " + json.dumps({"status": final["status"],
         "runs": [{k: row[k] for k in ("run", "accuracies", "wins", "losses",
                                       "one_sided_exact_p", "run_gate_pass")}

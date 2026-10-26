@@ -15,8 +15,22 @@ import time
 import weakref
 
 import torch
-from safetensors.torch import load_file, save_file
+from safetensors.torch import load_file, save as serialize_safetensors
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+EXPECTED_WEIGHTS = {
+    "SmolLM2-135M-Instruct": "5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c",
+    "SmolLM2-360M-Instruct": "e6bffe7435d7ddc10fd3b9a9efd429dafbacb1cb17015fb5562664e7532bf86e",
+}
+
+
+def weight_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> None:
@@ -24,8 +38,14 @@ def main() -> None:
     root = Path(os.environ["MOSAIC_LATENT_ROOT"]).resolve(strict=True)
     source = root / "models" / "SmolLM2-135M-Instruct"
     target = root / "models" / "SmolLM2-360M-Instruct"
-    if source == target or not source.exists() or not target.exists():
+    if (source == target or not source.is_dir() or not target.is_dir()
+            or (root / "models").is_symlink() or source.is_symlink()
+            or target.is_symlink() or source.samefile(target)):
         raise RuntimeError("Two separate staged weight sets are required")
+    for model_path in (source, target):
+        weights = model_path / "model.safetensors"
+        if weights.is_symlink() or weight_digest(weights) != EXPECTED_WEIGHTS[model_path.name]:
+            raise RuntimeError(f"Weight identity mismatch: {model_path.name}")
     begin = time.monotonic()
     source_model = AutoModelForCausalLM.from_pretrained(
         source, local_files_only=True, trust_remote_code=False,
@@ -39,7 +59,15 @@ def main() -> None:
         source_output = source_model(source_ids, output_hidden_states=True)
         latent = source_output.hidden_states[-1][0, -1].float().contiguous().cpu()
     state_path = root / "source_latent.safetensors"
-    save_file({"state": latent}, str(state_path))
+    if state_path.is_symlink():
+        raise RuntimeError("Latent output symlink refused")
+    serialized = serialize_safetensors({"state": latent})
+    try:
+        with state_path.open("xb") as file:
+            file.write(serialized)
+    except FileExistsError:
+        if state_path.is_symlink() or state_path.read_bytes() != serialized:
+            raise RuntimeError("Prior latent receipt differs; refusing overwrite")
     source_ref = weakref.ref(source_model)
     source_hidden_dim = latent.numel()
     del source_model, source_tokenizer, source_ids, source_output, latent
@@ -59,10 +87,13 @@ def main() -> None:
     bridge = torch.nn.Linear(source_hidden_dim, query_embed.shape[-1], bias=False)
     continuous_prefix = bridge(state[None, :]).unsqueeze(1)
     with torch.inference_mode():
-        no_state = target_model(inputs_embeds=query_embed).logits[0, -1]
+        # Equal-length controls isolate the source-dependent tensor from the
+        # positional effect of adding any prefix token.
+        zero_state = target_model(inputs_embeds=torch.cat((
+            torch.zeros_like(continuous_prefix), query_embed), dim=1)).logits[0, -1]
         with_state = target_model(
             inputs_embeds=torch.cat((continuous_prefix, query_embed), dim=1)).logits[0, -1]
-    delta = float((no_state - with_state).abs().max())
+    delta = float((zero_state - with_state).abs().max())
     if delta <= 0 or not torch.isfinite(with_state).all():
         raise RuntimeError("Continuous prefix failed to affect target logits")
     digest = hashlib.sha256(state_path.read_bytes()).hexdigest()
@@ -76,6 +107,7 @@ def main() -> None:
         "state_text_prompted_to_target": False,
         "target_used_inputs_embeds": True,
         "prefix_changed_logits_max_abs": delta,
+        "zero_prefix_equal_sequence_length_control": True,
         "source_stage_seconds": round(source_evicted - begin, 3),
         "total_seconds": round(time.monotonic() - begin, 3),
         "bridge_was_trained": False,
