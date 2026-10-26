@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import subprocess
 import threading
 import time
@@ -201,6 +202,22 @@ class Router:
             status = row.get("status")
             args = status.get("args") if isinstance(status, dict) else None
             if args is not None:
+                # llama.cpp router releases differ: some expose argv as a
+                # JSON array, while others expose the rendered command line.
+                # In particular Windows router mode currently uses a string.
+                # POSIX shlex would eat Windows path backslashes, so preserve
+                # them and unwrap only *paired* double quotes around tokens.
+                if isinstance(args, str):
+                    try:
+                        tokens = shlex.split(args, posix=False)
+                    except ValueError as exc:
+                        raise ProbeError(
+                            f"malformed router model arguments for {name!r}"
+                        ) from exc
+                    args = [
+                        token[1:-1] if token.startswith('"') and token.endswith('"')
+                        else token for token in tokens
+                    ]
                 if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
                     raise ProbeError(f"malformed router model arguments for {name!r}")
                 positions = [index for index, arg in enumerate(args) if arg == "--model"]
