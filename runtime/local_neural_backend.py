@@ -12,6 +12,33 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 from .strict_json import loads as strict_json_loads
 
 
+# Fixed request constraint only: NeuralThinkingCore still performs its own
+# strict parsing and validation of the model's returned content.
+_CORE_POSITION_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "mosaic_core_position",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "proposition_id": {"type": "string"},
+                "supports": {"type": "boolean"},
+                "reasoning": {"type": "string"},
+                "acknowledged_objections": {
+                    "type": "array", "items": {"type": "string"}
+                },
+            },
+            "required": [
+                "proposition_id", "supports", "reasoning",
+                "acknowledged_objections",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 class LoopbackBackendError(RuntimeError):
     """Fail closed if the local model endpoint violates its declared contract."""
 
@@ -45,6 +72,8 @@ class LoopbackCoreInference:
         port: int = 18081,
         model_id: str = "qwen3.5-4b-local",
         timeout_seconds: float = 40,
+        json_object_response: bool = False,
+        json_schema_response: bool = False,
     ):
         if type(port) is not int or not 1 <= port <= 65535:
             raise ValueError("port must be integer 1..65535")
@@ -57,9 +86,17 @@ class LoopbackCoreInference:
         if (type(timeout_seconds) not in (int, float)
                 or not 0 < timeout_seconds <= 120):
             raise ValueError("timeout_seconds must be 0..120 seconds")
+        if type(json_object_response) is not bool:
+            raise ValueError("json_object_response must be bool")
+        if type(json_schema_response) is not bool:
+            raise ValueError("json_schema_response must be bool")
+        if json_object_response and json_schema_response:
+            raise ValueError("json_object_response and json_schema_response are mutually exclusive")
         self.port = port
         self.model_id = model_id
         self.timeout_seconds = float(timeout_seconds)
+        self.json_object_response = json_object_response
+        self.json_schema_response = json_schema_response
         self.endpoint = f"http://127.0.0.1:{port}"
         # Disable ambient HTTP_PROXY/HTTPS_PROXY and never follow redirects.
         self._opener = build_opener(ProxyHandler({}), _RejectRedirect())
@@ -151,15 +188,17 @@ class LoopbackCoreInference:
 
         # A model ID response means availability, not trustworthy model lineage.
         self.preflight()
-        result = self._request_json(
-            "/v1/chat/completions",
-            payload={
-                "model": self.model_id,
-                "messages": list(messages),
-                "tools": [],
-                "stream": False,
-            },
-        )
+        payload: dict[str, object] = {
+            "model": self.model_id,
+            "messages": list(messages),
+            "tools": [],
+            "stream": False,
+        }
+        if self.json_object_response:
+            payload["response_format"] = {"type": "json_object"}
+        elif self.json_schema_response:
+            payload["response_format"] = _CORE_POSITION_RESPONSE_FORMAT
+        result = self._request_json("/v1/chat/completions", payload=payload)
         if result.get("object") != "chat.completion" or result.get("model") != self.model_id:
             raise LoopbackBackendError("Model response identity/schema mismatch")
         choices = result.get("choices")
