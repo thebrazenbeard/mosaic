@@ -8,6 +8,32 @@ Can Mosaic keep a logical capability pool larger than accelerator VRAM while gua
 
 This phase does **not** test intelligence. It tests whether the hardware/runtime premise is physically workable.
 
+## Experimental in-process ABI seam (metadata only)
+
+`experiments/p0_inprocess_abi_probe.py` is a Win64-only native llama.cpp
+**metadata** load/free preflight. It uses the actual `llama.dll` API within a
+single Python process instead of a router that creates per-model workers.
+It performs an A→B→A sequence 1–10 times and records native metadata-handle
+load/free timings. It pins both model file hashes and a caller-supplied exact
+`llama.dll` SHA-256; the inspected `0.4.1-dev` API and its 80-byte Win64
+`llama_model_params` structure are required. Invoke only with a new output
+path, e.g.:
+
+```powershell
+python -m experiments.p0_inprocess_abi_probe `
+  --dll C:\path\to\llama.dll --dll-sha256 EXACT_INSPECTED_DLL_SHA256 `
+  --model-a D:\path\to\A.gguf --model-b D:\path\to\B.gguf `
+  --cycles 10 --out D:\path\to\new-metadata-receipt.json
+```
+
+**This is deliberately not a P0 pass.** The native call is made with
+`vocab_only=true`, `no_alloc=true`, and `n_gpu_layers=0`: no neural weights,
+GPU residency, KV cache, or inference are exercised. Staying in one Python PID
+does not independently exclude unobserved child processes. This small step
+only checks a usable ABI for a future persistent-worker implementation, which
+must separately implement live decode, allocator/transfer telemetry, model
+identity, worker/child-process tracking, and the full P0 gate.
+
 ## Target envelope
 
 Primary target:
