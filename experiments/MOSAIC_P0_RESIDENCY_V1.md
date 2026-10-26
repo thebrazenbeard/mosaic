@@ -87,7 +87,13 @@ python experiments/p0_router_probe.py \
 
 The probe hashes the model files, records loading/unloading and first-streamed
 content timing, and emits an explicitly **partial** machine receipt. The
-monitor's `nvidia-smi` device totals include other processes and may miss
+`--out` file must be a new path: the probe reserves it exclusively **before**
+hashing model files or contacting the router and refuses to replace an existing
+file or symlink. A failed/interrupted experiment may leave an empty reserved
+file; that is **not a receipt** or evidence of completed cycles. Select a new
+path for any retry and preserve the failed attempt for investigation.
+
+The monitor's `nvidia-smi` device totals include other processes and may miss
 transient peaks; the receipt does not attest per-model allocated/reserved
 bytes, offload, KV/cache overhead, PCIe transfer, or stable model-worker PIDs.
 llama.cpp router mode may spawn a fresh worker process on model load even

@@ -191,8 +191,10 @@ def evaluate_learned_pair(value: object) -> dict:
                          if outcome[arm]["calls"]]
         for initial in initial_calls[1:]:
             baseline = initial_calls[0]
-            if any(initial[field] != baseline[field] for field in
-                   ("output_sha256", "input_tokens", "output_tokens")):
+            # One physical initial Core invocation is shared between arms.
+            # Its entire exact-schema receipt (including elapsed time) must
+            # agree, even though caller-reported values remain unauthenticated.
+            if initial != baseline:
                 raise LearnedChallengeEvalError(
                     f"{case_id} initial Core receipt differs across paired arms")
         parsed.append(outcome)

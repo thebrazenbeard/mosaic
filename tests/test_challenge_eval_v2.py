@@ -138,6 +138,13 @@ class LearnedChallengeEvalTests(unittest.TestCase):
         data["cases"][0]["challenged"]["calls"][0]["input_tokens"] += 1
         with self.assertRaisesRegex(LearnedChallengeEvalError, "initial"):
             evaluate_learned_pair(data)
+        # The initial Core invocation is physically shared, so a different
+        # duration cannot belong to the same receipt even when all model,
+        # output and token fields are otherwise identical.
+        data = fixture()
+        data["cases"][0]["challenged"]["calls"][0]["elapsed_ms"] += 1
+        with self.assertRaisesRegex(LearnedChallengeEvalError, "initial"):
+            evaluate_learned_pair(data)
 
     def test_token_imbalance_is_disclosed_not_silently_cost_matched(self):
         data = fixture()
