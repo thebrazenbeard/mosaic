@@ -1,12 +1,18 @@
 import unittest
-from io import BytesIO
+from io import BytesIO, StringIO
+import os
+from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 from experiments.p0_router_probe import (
     ProbeError,
     Router,
+    main,
     parse_nvidia_mib,
     require_loopback_router,
+    reserve_receipt,
     run_probe,
 )
 
@@ -60,6 +66,75 @@ MODEL_FILES = {
 
 
 class P0RouterProbeTests(unittest.TestCase):
+    @staticmethod
+    def _argv_for_output(directory: Path, output: Path) -> list[str]:
+        model_a = directory / "a.gguf"
+        model_b = directory / "b.gguf"
+        model_a.write_bytes(b"a")
+        model_b.write_bytes(b"b")
+        return [
+            "p0_router_probe.py", "--router-url", "http://127.0.0.1:8517",
+            "--dedicated-router", "--model-a", "A", "--model-b", "B",
+            "--model-a-file", str(model_a), "--model-b-file", str(model_b),
+            "--out", str(output),
+        ]
+
+    def test_existing_receipt_refused_before_hashing_or_router_access(self):
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            output = directory / "protected.json"
+            output.write_text("sentinel receipt", encoding="utf-8")
+            argv = self._argv_for_output(directory, output)
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch("experiments.p0_router_probe.file_sha256",
+                           side_effect=AssertionError("hashing must not run")),
+                mock.patch("experiments.p0_router_probe.Router",
+                           side_effect=AssertionError("router must not run")),
+                mock.patch.object(sys, "stderr", StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                main()
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(output.read_text(encoding="utf-8"), "sentinel receipt")
+
+    def test_symlinked_receipt_refused_without_modifying_target(self):
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            target = directory / "protected.json"
+            target.write_text("target sentinel", encoding="utf-8")
+            link = directory / "receipt-link.json"
+            try:
+                link.symlink_to(target)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            argv = self._argv_for_output(directory, link)
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch("experiments.p0_router_probe.file_sha256",
+                           side_effect=AssertionError("hashing must not run")),
+                mock.patch("experiments.p0_router_probe.Router",
+                           side_effect=AssertionError("router must not run")),
+                mock.patch.object(sys, "stderr", StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                main()
+            self.assertEqual(caught.exception.code, 2)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(target.read_text(encoding="utf-8"), "target sentinel")
+
+    def test_new_receipt_is_exclusive_and_private(self):
+        with TemporaryDirectory() as temporary:
+            output = Path(temporary) / "new-receipt.json"
+            with reserve_receipt(output) as receipt:
+                receipt.write('{"qualification":"PARTIAL_NOT_P0_PASS"}\n')
+            self.assertEqual(output.read_text(encoding="utf-8"),
+                             '{"qualification":"PARTIAL_NOT_P0_PASS"}\n')
+            with self.assertRaises(FileExistsError):
+                reserve_receipt(output)
+            if os.name == "posix":
+                self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+
     @staticmethod
     def memory_router(response: bytes, *, timeout_s: float = 90.0) -> Router:
         class StaticOpener:

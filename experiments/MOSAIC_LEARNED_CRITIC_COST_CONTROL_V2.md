@@ -15,8 +15,9 @@ critic because its two-call budget omits a critic invocation.
 | `challenged` | Core initial | Same claimed critic model, learned objection task | Core reconsider | Candidate intervention |
 
 The two three-call arms are scored on the **same complete case set** with
-the same self-declared Core and critic model IDs, same initial Core output
-SHA-256/input/output token receipt, exactly three ordered inference calls per
+the same self-declared Core and critic model IDs, **identical complete initial
+Core receipt** (role, model, input/output token counts, elapsed milliseconds,
+output SHA-256), exactly three ordered inference calls per
 successful arm, and one token ceiling. Critic requests must differ only in the
 pre-registered intervention versus neutral instruction. The scorer validates
 declared receipt structure and compares the reported sum of input and output

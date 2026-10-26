@@ -21,7 +21,7 @@ import re
 import subprocess
 import threading
 import time
-from typing import Callable
+from typing import Callable, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -321,6 +321,16 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def reserve_receipt(path: Path) -> TextIO:
+    """Reserve a new private receipt without following or replacing existing paths."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        return os.fdopen(fd, "w", encoding="utf-8")
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def run_probe(
     router: Router,
     model_a: str,
@@ -486,29 +496,39 @@ def main() -> int:
     args = parser.parse_args()
     if not args.dedicated_router:
         parser.error("must explicitly attest --dedicated-router; this probe changes router model state")
-    subjects = {}
-    for label, path in ((args.model_a, args.model_a_file), (args.model_b, args.model_b_file)):
-        if not path.is_file():
-            parser.error(f"missing local model file: {path}")
-        subjects[label] = {"file_name": path.name, "path": str(path.resolve()),
-                           "size_bytes": path.stat().st_size, "sha256": file_sha256(path)}
-    router = Router(args.router_url)
-    environment_subject = {"platform": platform.platform(), "device_monitor": args.nvidia_smi,
-                           "device_gpu_index": args.gpu_index,
-                           "router_runtime_version": "UNATTESTED_NOT_CAPTURED"}
-    with NvidiaSampler(args.nvidia_smi, args.gpu_index) as sampler:
-        wait_until = time.monotonic() + 5
-        while not sampler.samples and time.monotonic() < wait_until:
-            time.sleep(0.1)
-        if not sampler.samples:
-            raise ProbeError("nvidia-smi did not provide a baseline sample")
-        receipt = run_probe(router, args.model_a, args.model_b, args.cycles, sampler, subjects,
-                            environment_subject=environment_subject)
-    result = json.dumps(receipt, indent=2, sort_keys=True)
+    output = None
     if args.out:
-        args.out.write_text(result + "\n", encoding="utf-8")
-    print(result)
-    return 0
+        try:
+            output = reserve_receipt(args.out)
+        except OSError as exc:
+            parser.error(f"cannot exclusively reserve receipt path: {exc}")
+    try:
+        subjects = {}
+        for label, path in ((args.model_a, args.model_a_file), (args.model_b, args.model_b_file)):
+            if not path.is_file():
+                parser.error(f"missing local model file: {path}")
+            subjects[label] = {"file_name": path.name, "path": str(path.resolve()),
+                               "size_bytes": path.stat().st_size, "sha256": file_sha256(path)}
+        router = Router(args.router_url)
+        environment_subject = {"platform": platform.platform(), "device_monitor": args.nvidia_smi,
+                               "device_gpu_index": args.gpu_index,
+                               "router_runtime_version": "UNATTESTED_NOT_CAPTURED"}
+        with NvidiaSampler(args.nvidia_smi, args.gpu_index) as sampler:
+            wait_until = time.monotonic() + 5
+            while not sampler.samples and time.monotonic() < wait_until:
+                time.sleep(0.1)
+            if not sampler.samples:
+                raise ProbeError("nvidia-smi did not provide a baseline sample")
+            receipt = run_probe(router, args.model_a, args.model_b, args.cycles, sampler, subjects,
+                                environment_subject=environment_subject)
+        result = json.dumps(receipt, indent=2, sort_keys=True)
+        if output is not None:
+            output.write(result + "\n")
+        print(result)
+        return 0
+    finally:
+        if output is not None:
+            output.close()
 
 
 if __name__ == "__main__":
