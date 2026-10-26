@@ -69,6 +69,9 @@ def retrieve_bm25(documents, query, *, top_k):
 def answer_from_evidence(retrieved, *, threshold, total):
     if type(total) is not int or type(threshold) is not int or not 1 <= threshold <= total:
         raise ValueError("Invalid decision threshold")
+    if any(type(row.position) is not int or type(row.value) is not int
+           for row in retrieved):
+        raise ValueError("Evidence positions and values must be integers")
     positions = [row.position for row in retrieved]
     if len(set(positions)) != len(positions) or any(not 0 <= p < total for p in positions):
         raise ValueError("Evidence must have unique valid observation positions")
@@ -89,7 +92,11 @@ def evaluate_cases(rows, *, top_k):
         family, mask, truth = row["family"], row["mask"], row["label"]
         if type(family) is not int or not 0 <= family < len(THRESHOLDS):
             raise ValueError("Invalid task family")
-        if truth not in (0, 1) or truth != int(mask.bit_count() >= THRESHOLDS[family]):
+        if type(truth) is not int or truth not in (0, 1):
+            raise ValueError("Published label must be a binary integer")
+        if type(mask) is not int or not 0 <= mask < 1 << N_FLAGS:
+            raise ValueError("Published observations must be a 16-bit integer mask")
+        if truth != int(mask.bit_count() >= THRESHOLDS[family]):
             raise ValueError("Published label disagrees with observations")
         documents = create_observations(mask)
         chosen = retrieve_bm25(documents, QUERY, top_k=top_k)
