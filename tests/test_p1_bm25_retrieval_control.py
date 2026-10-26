@@ -48,6 +48,21 @@ class BM25ControlTests(unittest.TestCase):
             with self.subTest(budget=budget), self.assertRaises(ValueError):
                 retrieve_bm25(docs, "observed flag state", top_k=budget)
 
+    def test_evidence_boolean_and_fractional_fields_cannot_count_as_observations(self):
+        invalid = (
+            Observation(position=True, value=1, text="bool position"),
+            Observation(position=0, value=True, text="bool value"),
+            Observation(position=0.5, value=1, text="fractional position"),
+        )
+        for observation in invalid:
+            with self.subTest(observation=observation), self.assertRaises(ValueError):
+                answer_from_evidence([observation], threshold=1, total=16)
+
+    def test_case_labels_must_be_binary_integers_not_boolean_or_fractional(self):
+        for label in (True, False, 1.0, 0.0):
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                evaluate_cases([{"mask": 0, "family": 0, "label": label}], top_k=16)
+
     def test_evaluation_records_coverage_and_byte_accounting(self):
         rows = [
             {"mask": 0xFFFF, "family": 7, "label": 1},
