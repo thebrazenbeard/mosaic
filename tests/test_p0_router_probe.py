@@ -325,6 +325,32 @@ class P0RouterProbeTests(unittest.TestCase):
             "vera-4b": "D:/VERA/Models/gguf/model-b.gguf",
         })
 
+    def test_windows_router_renders_model_args_as_command_line_string(self):
+        router = Router("http://127.0.0.1:8517")
+        path = r"D:\VERA\Models\GGUF Files\core q5.gguf"
+        router.model_records = lambda: {
+            "core": {"status": {"value": "unloaded", "args":
+                'llama-server.exe --alias core --model "' + path + '" --fit off'}},
+            "critic": {"status": {"value": "unloaded", "args":
+                r'llama-server.exe --model D:\OllamaModels\blobs\sha256-critic'}},
+        }
+        self.assertEqual(router.paths(), {
+            "core": path,
+            "critic": r"D:\OllamaModels\blobs\sha256-critic",
+        })
+
+    def test_router_string_args_malformed_or_ambiguous_fail_closed(self):
+        router = Router("http://127.0.0.1:8517")
+        for args in (
+            'llama-server.exe --model "D:\\Unclosed File.gguf',
+            'llama-server.exe --model a.gguf --model b.gguf',
+            'llama-server.exe --model',
+        ):
+            with self.subTest(args=args):
+                router.model_records = lambda args=args: {"A": {"status": {"args": args}}}
+                with self.assertRaises(ProbeError):
+                    router.paths()
+
     def test_ambiguous_preset_model_path_fails_closed(self):
         router = Router("http://127.0.0.1:8517")
         for args in (
