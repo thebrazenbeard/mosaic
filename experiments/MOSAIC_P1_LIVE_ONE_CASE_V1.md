@@ -5,8 +5,18 @@ IDs in a dedicated `llama.cpp` router and submits reported counts to the V2
 offline scorer. It reuses one observed initial Core call, then runs a neutral
 critic + Core reconsideration and a challenged critic + Core reconsideration.
 Five physical requests produce the conceptual one-call and paired three-call
-arms. Core messages must return a strict one-field `supports` JSON object;
-thinking tags, extra fields, and unparsable outputs are contract failures.
+arms. Core messages use the same fixed strict **four-field** JSON schema and
+parser as `NeuralThinkingCore`: `proposition_id`, boolean `supports`, nonblank
+`reasoning`, and string-array `acknowledged_objections`. The smoke fixture's
+`case_id` binds the model's `proposition_id`. Thinking tags, extra fields,
+proposition substitutions, duplicate acknowledgments, and unparsable outputs
+are contract failures; schema compatibility is not truth verification.
+Every model request disables tools and streaming. The collector accepts only
+an exact echoed model ID, one assistant choice at index zero, a `stop` finish,
+and no nonempty tool calls for Core or critic. A malformed completion fails
+closed and triggers router unload cleanup.
+Each generation has a 96–384 token cap (default 192). The old 24-token
+example could not realistically fit a four-field Core answer.
 
 Run only on an explicitly dedicated, idle localhost router with a single loaded
 model maximum. It **loads and unloads models** and must not touch a shared
@@ -22,7 +32,7 @@ python -m experiments.p1_live_three_arm `
   --critic-model-file D:\OllamaModels\blobs\EXACT_CRITIC_BLOB `
   --case-file experiments\fixtures\MOSAIC_P1_PUBLIC_SMOKE_CASE_V1.json `
   --experiment-id p1-smoke-20261025 --corpus-id public-smoke-v1 `
-  --frozen-at ACTUAL_PRE_RUN_UTC_TIMESTAMP --n-predict 24 `
+  --frozen-at ACTUAL_PRE_RUN_UTC_TIMESTAMP --n-predict 192 `
   --out p1-local-raw-observation.json
 ```
 
@@ -37,6 +47,9 @@ token counters, loaded-worker identity, hardware residency, critic independence,
 or gold oracle is independently authenticated. Fixed neutral-before-challenged
 order and prompt/context differences remain confounders. The V2 scorer always
 reports `neural_benefit_qualified: false`; one case cannot estimate a benefit.
+The critic's objection is model-produced advisory text, not evidence or proof
+of a genuinely trained specialist. The reconsideration input is an exploratory
+smoke prompt and not an exact `CoreDeliberationEngine` transcript.
 
 Source-only unit tests use a fake router and do not load weights or make any
 network request:
