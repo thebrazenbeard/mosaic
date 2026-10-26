@@ -1,0 +1,102 @@
+{
+  "schema_id": "MOSAIC_P0_NEURAL_WEIGHT_HOST_OBSERVATION_V1",
+  "date_utc": "2026-10-26",
+  "qualification": "PARTIAL_REAL_NEURAL_WEIGHT_ABA_NOT_P0_PASS",
+  "p0_pass": false,
+  "inference_completed": false,
+  "shared_learned_state_demonstrated": false,
+  "host": "Lappy",
+  "final_host_probe_script_sha256": "56bf78c7bee82d7f268a66ac99a052e2c84273a7665f1c921b1f58265a2c6903",
+  "runtime": {
+    "llama_version": "0.4.1-dev",
+    "llama_dll_sha256": "520e77d1e72831ef27ae892553087b85a76fe54052aba20493cc6358c51590d7",
+    "ggml_dll_sha256": "5b8379cdff3fb1696f792ac15752efc4403211eeeb1ed5807d081689559d72f5",
+    "backend": "Vulkan with CPU_Mapped hybrid tensors",
+    "n_gpu_layers_requested": 16
+  },
+  "device": {
+    "name": "NVIDIA GeForce RTX 3050 Laptop GPU",
+    "physical_memory_mib": 4096,
+    "observed_idle_used_mib": 1376,
+    "peak_used_mib_10_cycles": 2558,
+    "highest_post_free_used_mib_10_cycles": 1380,
+    "observed_final_used_mib": 1376
+  },
+  "subjects": {
+    "A": {
+      "blob_sha256": "58db9b8722fe2dec6918b842b05de814dd56c6a8bc55f35c5e8b66812206398e",
+      "size_bytes": 1646573120,
+      "n_layer": 28,
+      "n_params": 1543714304
+    },
+    "B": {
+      "blob_sha256": "85e4a5b7b8ef0e48af0e8658f5aaab9c2324c76c1641493f4d1e25fce54b18b9",
+      "size_bytes": 2497280480,
+      "n_layer": 36,
+      "n_params": 4022468096
+    }
+  },
+  "runs": [
+    {
+      "name": "trial1_missing_backend_reproduced",
+      "outcome": "FAIL_NO_WEIGHTS_LOADED",
+      "cause": "GGML backend registry had not been loaded before model load",
+      "remedy": "Load installed backends with ggml_backend_load_all_from_path"
+    },
+    {
+      "name": "trial2_one_aba",
+      "outcome": "COMPLETE_NEURAL_WEIGHTS_ONLY",
+      "python_pid": 36980,
+      "aba_cycles": 1,
+      "model_load_free_calls": 3,
+      "peak_used_gpu_mib": 2558,
+      "full_receipt_location": "D:\\VERA\\experiments\\mosaic-p0-inprocess-20261026\\weights_aba_1_trial2.json"
+    },
+    {
+      "name": "trial3_ten_aba",
+      "outcome": "COMPLETE_NEURAL_WEIGHTS_ONLY",
+      "python_pid": 13112,
+      "aba_cycles": 10,
+      "model_load_free_calls": 30,
+      "load_free_wall_total_s": 115.47,
+      "gpu_poll_samples": 173,
+      "gpu_poll_errors": [],
+      "minimum_preload_free_ram_mib": 3286,
+      "minimum_during_load_free_ram_mib": 2211,
+      "peak_used_gpu_mib": 2558,
+      "maximum_post_unload_used_gpu_mib": 1380,
+      "full_receipt_sha256": "7cfe9c29dbe2d5031a6ea2b0840c611d246cefdbc931e91406e52833ee2defe9",
+      "full_receipt_location": "D:\\VERA\\experiments\\mosaic-p0-inprocess-20261026\\weights_aba_10_trial3.json"
+    },
+    {
+      "name": "trial4_pinned_ggml_one_aba",
+      "outcome": "COMPLETE_NEURAL_WEIGHTS_ONLY",
+      "python_pid": 10392,
+      "aba_cycles": 1,
+      "model_load_free_calls": 3,
+      "synchronous_peak_gpu_mib": 2403,
+      "poll_only_peak_gpu_mib": 1380,
+      "measurement_note": "Background sampler missed short peaks; synchronous snapshots captured them. The subsequent code uses both.",
+      "full_receipt_sha256": "63973f62f408bad30fb573f34fb71d80bbff7d9f6819f7b8837e963a7e31a94d",
+      "full_receipt_location": "D:\\VERA\\experiments\\mosaic-p0-inprocess-20261026\\weights_aba_1_pinned_trial4.json"
+    },
+    {
+      "name": "trial5_final_pinned_sampler_fix_one_aba",
+      "outcome": "COMPLETE_NEURAL_WEIGHTS_ONLY",
+      "python_pid": 37492,
+      "aba_cycles": 1,
+      "model_load_free_calls": 3,
+      "corrected_synchronous_plus_polled_peak_gpu_mib": 2558,
+      "maximum_post_unload_used_gpu_mib": 1380,
+      "full_receipt_sha256": "fe3c124266ea5ff019c7ead143400bf2be892e019113519a5dde049cf5b23100",
+      "full_receipt_location": "D:\\VERA\\experiments\\mosaic-p0-inprocess-20261026\\weights_aba_1_final_trial5.json"
+    }
+  ],
+  "limitations": [
+    "No llama inference context was created, so tokens were not decoded.",
+    "No KV-cache residency, PCIe bytes, per-allocator metrics, or same-PID inference latency were observed.",
+    "The single Python PID was checked, but independent child-process restarts were not excluded.",
+    "nvidia-smi samples measure total device memory, including other workloads, and may miss transient peaks.",
+    "Neither shared learned state nor superiority over ordinary retrieval was tested."
+  ]
+}
