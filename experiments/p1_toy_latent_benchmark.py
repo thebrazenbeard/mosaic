@@ -26,6 +26,13 @@ from safetensors.torch import load_file, save as serialize_safetensors
 THRESHOLDS = (6, 7, 8, 9, 10, 11, 12, 13)
 TRAIN_COUNT, DEV_COUNT, HELDOUT_COUNT = 512, 64, 8
 EPOCHS, BATCH, SEED = 100, 128, 20261026
+EXACT_PUBLISHED_WEIGHTS = {
+    "source.safetensors": "c259f3f546ff241f169bd5a69ee4fe4e1ea3dfaadfff49f1f6d28de62dc70e82",
+    "target.safetensors": "25c23ab4b51b089005e6c87507e8e3a71af68cc40e52f212e32485969d4ffc9c",
+    "retrieval.safetensors": "da02b08730d14b9cd868c46d4aaed918c60bb4d4914d8d69942c9f487a0362a4",
+    "full.safetensors": "a625be12845e33e0e49bdf1ea6a667c77488acd75d67513c6ffe758651f19156",
+    "reset.safetensors": "f5e965c89752d877a778ee2b14cdbea5627fa20c871905f5fe8418faa0c0aab2",
+}
 
 
 def model(*widths: int) -> torch.nn.Module:
@@ -176,8 +183,14 @@ def verify_manifest(root: Path, data: dict[str, list[dict[str, int]]]) -> dict:
     manifest = json.loads((root / "train_manifest.json").read_text(encoding="utf-8"))
     if manifest["dataset_sha256"] != dataset_sha(data):
         raise RuntimeError("Dataset fingerprint mismatch")
+    if (manifest.get("weights") != EXACT_PUBLISHED_WEIGHTS
+            or manifest.get("seed") != SEED or manifest.get("epochs") != EPOCHS
+            or manifest.get("train_count") != len(data["train"])
+            or manifest.get("dev_count") != len(data["dev"])):
+        raise RuntimeError("Manifest does not bind the published experiment checkpoints")
     for name, expected in manifest["weights"].items():
-        if file_sha(root / name) != expected:
+        path = root / name
+        if path.is_symlink() or file_sha(path) != expected:
             raise RuntimeError(f"Weight checksum mismatch: {name}")
     return manifest
 
@@ -267,9 +280,20 @@ def compare() -> None:
         with torch.inference_mode():
             expected = target(torch.cat((receipt["continuous_state"],
                                          receipt["query_onehot"]), dim=1)).argmax(1).tolist()
+            state = receipt["continuous_state"]
+            query = receipt["query_onehot"]
+            expected_ablations = {
+                "zero_state": target(torch.cat((torch.zeros_like(state), query),
+                                                dim=1)).argmax(1).tolist(),
+                "rolled_state": target(torch.cat((torch.roll(state, 1, dims=0), query),
+                                                  dim=1)).argmax(1).tolist(),
+            }
         declared = json.loads((root / f"{name}_neural_predictions.json").read_text())
         if expected != declared:
             raise RuntimeError(f"Target predictions fail checkpoint replay: {name}")
+        declared_ablations = json.loads((root / f"{name}_ablations.json").read_text())
+        if expected_ablations != declared_ablations:
+            raise RuntimeError(f"Ablation predictions fail checkpoint replay: {name}")
     del target
     gc.collect()
     retrieval = load_weights(model(16, 64, 64, 2), root / "retrieval.safetensors")

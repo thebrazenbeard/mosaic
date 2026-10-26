@@ -9,6 +9,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -22,6 +23,24 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 EXPECTED_WEIGHTS = {
     "SmolLM2-135M-Instruct": "5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c",
     "SmolLM2-360M-Instruct": "e6bffe7435d7ddc10fd3b9a9efd429dafbacb1cb17015fb5562664e7532bf86e",
+}
+EXPECTED_RUNTIME_ASSETS = {
+    "SmolLM2-135M-Instruct": {
+        "config.json": "8eb740e8bbe4cff95ea7b4588d17a2432deb16e8075bc5828ff7ba9be94d982a",
+        "generation_config.json": "87b916edaaab66b3899b9d0dd0752727dff6666686da0504d89ae0a6e055a013",
+        "special_tokens_map.json": "2b7379f3ae813529281a5c602bc5a11c1d4e0a99107aaa597fe936c1e813ca52",
+        "tokenizer.json": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+        "tokenizer_config.json": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+        "vocab.json": "82b84012e3add4d01d12ba14442026e49b8cbbaead1f79ecf3d919784f82dc79",
+    },
+    "SmolLM2-360M-Instruct": {
+        "config.json": "224f72354f10d617a359cc82ad15a3c96e866b9b2ffadb81997eeea9e88e22ee",
+        "generation_config.json": "87b916edaaab66b3899b9d0dd0752727dff6666686da0504d89ae0a6e055a013",
+        "special_tokens_map.json": "2b7379f3ae813529281a5c602bc5a11c1d4e0a99107aaa597fe936c1e813ca52",
+        "tokenizer.json": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+        "tokenizer_config.json": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+        "vocab.json": "82b84012e3add4d01d12ba14442026e49b8cbbaead1f79ecf3d919784f82dc79",
+    },
 }
 
 
@@ -46,6 +65,10 @@ def main() -> None:
         weights = model_path / "model.safetensors"
         if weights.is_symlink() or weight_digest(weights) != EXPECTED_WEIGHTS[model_path.name]:
             raise RuntimeError(f"Weight identity mismatch: {model_path.name}")
+        for filename, expected in EXPECTED_RUNTIME_ASSETS[model_path.name].items():
+            asset = model_path / filename
+            if asset.is_symlink() or weight_digest(asset) != expected:
+                raise RuntimeError(f"Runtime config/tokenizer identity mismatch: {model_path.name}/{filename}")
     begin = time.monotonic()
     source_model = AutoModelForCausalLM.from_pretrained(
         source, local_files_only=True, trust_remote_code=False,
@@ -94,7 +117,8 @@ def main() -> None:
         with_state = target_model(
             inputs_embeds=torch.cat((continuous_prefix, query_embed), dim=1)).logits[0, -1]
     delta = float((zero_state - with_state).abs().max())
-    if delta <= 0 or not torch.isfinite(with_state).all():
+    if not math.isfinite(delta) or delta <= 0 or not torch.isfinite(
+            with_state).all() or not torch.isfinite(zero_state).all():
         raise RuntimeError("Continuous prefix failed to affect target logits")
     digest = hashlib.sha256(state_path.read_bytes()).hexdigest()
     receipt = {
