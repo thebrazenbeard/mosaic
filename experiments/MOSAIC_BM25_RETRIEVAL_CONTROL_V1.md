@@ -14,6 +14,9 @@ it **abstains** instead of guessing or treating abstention as accuracy.
 Metrics separate `correct`, `incorrect`, `abstain`, coverage, and accuracy
 conditional on deciding. BM25 scores use `k1=1.2`, `b=0.75` and a documented
 recency tie-break for equally relevant records. `top_k=16` sees all observations.
+Evidence indices, values, case masks, and gold labels are checked as exact
+integers; boolean or fractional values are rejected rather than silently
+coerced into valid binary observations or ground truth.
 
 Run a posthoc diagnostic on the original **already-seen** two research splits
 only in the isolated Torch-enabled experiment environment:
