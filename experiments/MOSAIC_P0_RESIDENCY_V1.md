@@ -34,6 +34,42 @@ only checks a usable ABI for a future persistent-worker implementation, which
 must separately implement live decode, allocator/transfer telemetry, model
 identity, worker/child-process tracking, and the full P0 gate.
 
+## Experimental in-process neural weight allocation (still partial)
+
+`experiments/p0_inprocess_weight_probe.py` advances the above preflight from
+vocabulary metadata to actual model tensor allocation and freeing in the
+same Win64 Python process. Unlike metadata-only loading, it explicitly loads
+the installed GGML compute backends from the same llama.cpp package before
+calling the native model loader. The script uses exactly two distinct GGUF
+file digests, requests a bounded number of GPU layers, and executes 1–10
+A→B→A cycles. Each step records the Python PID, model layer/parameter counts,
+physical-RAM headroom, device-total memory readings before/while/after load,
+and load/free wall time. A half-second `nvidia-smi` background sampler adds a
+best-effort observed device peak. It stops before the next weight load if
+physical RAM is below the declared floor (minimum permitted floor 2048 MiB).
+
+```powershell
+python experiments/p0_inprocess_weight_probe.py `
+  --dll C:\path\to\llama.dll --dll-sha256 EXACT_INSPECTED_DLL_SHA256 `
+  --ggml-sha256 EXACT_INSPECTED_GGML_DLL_SHA256 `
+  --model-a D:\path\to\A.gguf --model-b D:\path\to\B.gguf `
+  --gpu-layers 16 --cycles 1 --min-free-ram-mib 2300 `
+  --out D:\path\to\new-neural-weight-receipt.json
+```
+
+Run a single guarded cycle before choosing whether ten cycles are safe for
+that host's *current* workload. The output is exclusively reserved before
+hashing models; a failed or interrupted run can leave an empty file which
+must not be interpreted as a completed receipt. Do not stop unrelated GPU
+workloads or disable system guards to make the experiment succeed.
+
+**This still cannot pass P0 on its own.** It does *not* create a llama inference
+context, decode tokens, measure token-level latency/KV cache, attribute
+GPU memory to individual allocator pools, measure PCIe bytes, or independently
+exclude child-process restarts. Total `nvidia-smi` memory also includes other
+processes and may miss transient peaks. Full neural tensor allocation is a
+necessary but insufficient prerequisite for persistent specialist inference.
+
 ## Target envelope
 
 Primary target:
