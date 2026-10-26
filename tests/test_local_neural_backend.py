@@ -135,6 +135,80 @@ class LocalNeuralBackendTests(unittest.TestCase):
             self.assertEqual(req["messages"][1]["role"],"user")
             self.assertEqual(req["stream"],False)
             self.assertEqual(req["tools"],[])
+            self.assertNotIn("response_format",req)
+
+    def test_opt_in_json_object_response_format(self):
+        with mock_local_service() as (port,service):
+            backend=LoopbackCoreInference(port=port,json_object_response=True)
+            result=NeuralThinkingCore(backend).think(
+                DeliberationTask("case","p","Is the claim supportable?")
+            )
+            self.assertFalse(result.supports)
+            self.assertEqual(service.requests[0]["response_format"],{
+                "type":"json_object"
+            })
+
+    def test_opt_in_json_schema_response_format_is_exact_core_contract(self):
+        with mock_local_service() as (port,service):
+            backend=LoopbackCoreInference(port=port,json_schema_response=True)
+            result=NeuralThinkingCore(backend).think(
+                DeliberationTask("case","p","Is the claim supportable?")
+            )
+            self.assertFalse(result.supports)
+            response_format=service.requests[0]["response_format"]
+            self.assertEqual(response_format,{
+                "type":"json_schema",
+                "json_schema":{
+                    "name":"mosaic_core_position",
+                    "strict":True,
+                    "schema":{
+                        "type":"object",
+                        "properties":{
+                            "proposition_id":{"type":"string"},
+                            "supports":{"type":"boolean"},
+                            "reasoning":{"type":"string"},
+                            "acknowledged_objections":{
+                                "type":"array","items":{"type":"string"},
+                            },
+                        },
+                        "required":[
+                            "proposition_id","supports","reasoning",
+                            "acknowledged_objections",
+                        ],
+                        "additionalProperties":False,
+                    },
+                },
+            })
+
+    def test_json_response_mode_options_are_boolean_and_exclusive(self):
+        for flag in ("json_object_response","json_schema_response"):
+            for bad in (None,0,1,"true",[],{}):
+                with self.subTest(flag=flag,bad=bad):
+                    with self.assertRaisesRegex(ValueError,"must be bool"):
+                        LoopbackCoreInference(**{flag:bad})
+        with self.assertRaisesRegex(ValueError,"mutually exclusive"):
+            LoopbackCoreInference(
+                json_object_response=True,json_schema_response=True
+            )
+
+    def test_json_response_modes_do_not_relax_strict_core_parser(self):
+        for mode in ("json_object_response","json_schema_response"):
+            for invalid_answer in (
+                "not JSON",
+                "```json\n"+FakeQwen.answer+"\n```",
+                '{"proposition_id":"p","supports":false,"reasoning":"valid","acknowledged_objections":[],"extra":1}',
+                '{"proposition_id":"wrong","supports":false,"reasoning":"valid","acknowledged_objections":[]}',
+                '{"proposition_id":"p","supports":1,"reasoning":"valid","acknowledged_objections":[]}',
+                '{"proposition_id":"p","supports":false,"reasoning":" ","acknowledged_objections":[]}',
+            ):
+                with self.subTest(mode=mode,invalid_answer=invalid_answer[:25]):
+                    with mock_local_service() as (port,service):
+                        service.answer=invalid_answer
+                        backend=LoopbackCoreInference(port=port,**{mode:True})
+                        with self.assertRaises(NeuralOutputError):
+                            NeuralThinkingCore(backend).think(
+                                DeliberationTask("case","p","Is the claim supportable?")
+                            )
 
     def test_unverified_server_model_name_blocks_generation(self):
         with mock_local_service(model="other-model") as (port,service):
