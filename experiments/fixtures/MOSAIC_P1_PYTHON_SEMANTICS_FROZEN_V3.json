@@ -1,0 +1,68 @@
+{
+  "schema_id": "MOSAIC_P1_DECLARED_FROZEN_CASES_V3",
+  "corpus_id": "p1-python-semantics-balanced-v3",
+  "claimed_frozen_at_utc": "2026-10-26T09:17:38Z",
+  "declared_sha256": "7d482b7b4561ee049ff8d153d151dc48ed17182e89e549d31aa7e92f4ccc4477",
+  "cases": [
+    {
+      "case_id": "p1c01",
+      "prompt": "In Python 3, is the proposition sum([2, 3, 5]) == 11 true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c02",
+      "prompt": "In Python 3, is the proposition sorted([3, 1, 2]) == [1, 2, 3] true?",
+      "expected_supports": true
+    },
+    {
+      "case_id": "p1c03",
+      "prompt": "In Python 3, is the proposition 7 // 2 == 4 true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c04",
+      "prompt": "In Python 3, is the proposition bool(\"\") is False true?",
+      "expected_supports": true
+    },
+    {
+      "case_id": "p1c05",
+      "prompt": "In Python 3, is the proposition len(set([1, 1, 2])) == 2 true?",
+      "expected_supports": true
+    },
+    {
+      "case_id": "p1c06",
+      "prompt": "In Python 3, is the proposition sum(range(4)) == 10 true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c07",
+      "prompt": "In Python 3, is the proposition sum([2, 3, 5]) == 10 true?",
+      "expected_supports": true
+    },
+    {
+      "case_id": "p1c08",
+      "prompt": "In Python 3, is the proposition bool(\"0\") is False true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c09",
+      "prompt": "In Python 3, is the proposition sorted([3, 1, 2]) == [3, 2, 1] true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c10",
+      "prompt": "In Python 3, is the proposition len(set([1, 1, 2])) == 3 true?",
+      "expected_supports": false
+    },
+    {
+      "case_id": "p1c11",
+      "prompt": "In Python 3, is the proposition 7 // 2 == 3 true?",
+      "expected_supports": true
+    },
+    {
+      "case_id": "p1c12",
+      "prompt": "In Python 3, is the proposition sum(range(4)) == 6 true?",
+      "expected_supports": true
+    }
+  ]
+}
