@@ -153,6 +153,29 @@ class LearnedChallengeEvalTests(unittest.TestCase):
         self.assertFalse(report["paired"]["all_reported_costs_matched"])
         self.assertEqual(report["paired"]["unmatched_cases"], ["gain"])
         self.assertEqual(report["paired"]["case_results"][0]["reported_token_delta"], 20)
+        # The all-case intent-to-treat-looking score still includes a win
+        # whose cost is *not* matched. A separate descriptive stratum must
+        # expose the remaining loss rather than imply cost-matched parity.
+        self.assertEqual(report["paired"]["wins"], 1)
+        self.assertEqual(report["paired"]["reported_cost_matched_subset"], {
+            "cases": 2, "wins": 0, "losses": 1, "ties": 1,
+            "net_correct_delta": -1,
+            "selection_is_post_outcome_exploratory": True,
+        })
+        self.assertFalse(report["neural_benefit_qualified"])
+
+    def test_no_reported_cost_matched_cases_does_not_claim_paired_effect(self):
+        data = fixture()
+        for case in data["cases"]:
+            case["challenged"]["calls"][1]["output_tokens"] += 20
+        report = evaluate_learned_pair(data)
+        self.assertEqual(report["paired"]["unmatched_cases"],
+                         ["gain", "regression", "tie"])
+        self.assertEqual(report["paired"]["reported_cost_matched_subset"], {
+            "cases": 0, "wins": 0, "losses": 0, "ties": 0,
+            "net_correct_delta": 0,
+            "selection_is_post_outcome_exploratory": True,
+        })
         self.assertFalse(report["neural_benefit_qualified"])
 
     def test_declared_frozen_digest_binds_gold_and_prompt_but_is_unattested(self):

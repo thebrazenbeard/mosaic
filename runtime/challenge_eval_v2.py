@@ -223,6 +223,7 @@ def evaluate_learned_pair(value: object) -> dict:
         }
 
     wins = losses = ties = 0
+    matched_wins = matched_losses = matched_ties = 0
     unmatched = []
     case_results = []
     for row in parsed:
@@ -241,7 +242,14 @@ def evaluate_learned_pair(value: object) -> dict:
         balanced = (len(challenged["calls"]) == 3 and len(neutral["calls"]) == 3
                     and challenged["status"] == "ok" and neutral["status"] == "ok"
                     and token_delta <= tolerance)
-        if not balanced:
+        if balanced:
+            if challenged_correct and not neutral_correct:
+                matched_wins += 1
+            elif neutral_correct and not challenged_correct:
+                matched_losses += 1
+            else:
+                matched_ties += 1
+        else:
             unmatched.append(row["case_id"])
         case_results.append({
             "case_id": row["case_id"],
@@ -268,6 +276,15 @@ def evaluate_learned_pair(value: object) -> dict:
             "declared_inference_budget_matched": True,
             "all_reported_costs_matched": not unmatched,
             "unmatched_cases": unmatched,
+            "reported_cost_matched_subset": {
+                "cases": matched_wins + matched_losses + matched_ties,
+                "wins": matched_wins, "losses": matched_losses,
+                "ties": matched_ties,
+                "net_correct_delta": matched_wins - matched_losses,
+                # Matching is assessed after both model calls. Conditioning
+                # on it cannot establish an unbiased intervention effect.
+                "selection_is_post_outcome_exploratory": True,
+            },
             "case_results": case_results,
         },
         "corpus": {

@@ -47,6 +47,14 @@ and `calls` (ordered, possibly incomplete on non-success). Each call has
 calls, including the separate middle critic invocation. There is no
 zero-call/zero-token success escape. Neutral/challenged partial or errored
 cases remain in paired scoring and make that case's reported budget unmatched.
+The headline `paired.wins/losses/ties` therefore describe **all** cases,
+including budget-unmatched cases. The separate
+`paired.reported_cost_matched_subset` describes only complete, self-reported
+cost-matched pairs, with its own case count, win/loss/tie breakdown and net
+delta. That subset is selected *after* the interventions and may be biased;
+it is not a causal treatment effect or a pass criterion. A zero-case subset
+means there is **no** cost-matched comparison even when the all-case score
+looks favorable. Both remain unauthenticated descriptive arithmetic.
 
 ## Corpus binding is not a freeze attestation
 
