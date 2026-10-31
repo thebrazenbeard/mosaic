@@ -2,24 +2,19 @@
 
 # Mosaic
 
-**An AI architecture whose total capability can be larger than the model currently loaded into VRAM.**
+**A research toolkit for modular AI reasoning and bounded model residency.**
 
-Mosaic is an experimental modular-agent architecture for composing a persistent coordination layer and swappable specialist model partitions into one logical agent under constrained hardware.
+Mosaic combines a protocol-level design for a continuity-bearing Core with executable Python harnesses for residency accounting, specialist challenges, evidence boundaries, and comparison baselines. It explores modular-agent operation under constrained compute; it is not a trained or production-qualified modular model.
 
-The motivating target is deliberately aggressive: explore whether a system with the capability pool of a much larger model can operate on a roughly **4 GB VRAM-class GPU** by keeping only the currently needed specialist capacity resident.
+The research objective is to test whether a logical system can use more specialist capability than fits in accelerator memory simultaneously, by loading only the capacity needed for a task. The resulting memory, latency, continuity, and accuracy tradeoffs must be measured rather than assumed.
 
-## Project seed
+## Reusable architecture pattern (research status)
 
-The original concept is:
+Mosaic explores a logical agent assembled from a **continuity-bearing Core** and **swappable specialist partitions**. For example, a host could distinguish language, code, planning, and visual specialists while keeping task state and evidence provenance in a separately governed coordination layer. These are **candidate roles**, not shipped model weights or confirmed interchangeable transformer shards.
 
-- `VERA-MODEL20B`: the logical whole-agent system, initially imagined as roughly a 20B-class model / ~11 GB weight package.
-- `VERA-MODEL20Ba`: specialist partition, e.g. coding.
-- `VERA-MODEL20Bb`: specialist partition, e.g. conversation.
-- `VERA-MODEL20Bc`: specialist partition, e.g. reasoning/coding or another learned specialty.
-- `VERA-MODEL20Bd`: specialist partition, e.g. image/visual work.
-- `VERA-MODEL20B_boot`: a comparatively small boot/core architecture that allows the partitions to operate individually while preserving their composition as one logical agent.
+Compute residency is a measurable resource budget rather than a fixed workstation configuration. A small-memory GPU is one possible research target, with the specialist footprint, loading latency, and accuracy compared against full-history and retrieval baselines. No particular VRAM size or local host is a prerequisite for inspecting the repository's source-only harnesses.
 
-The exact parameter counts, partition boundaries, training method, and resident-memory budget are **not fixed yet**. The point of the repository is to find out which version of this idea actually works.
+The original named model-partition proposal and historical parameter estimates are preserved as research context in [Project Seed](docs/PROJECT_SEED.md). Their names and sizes are hypotheses, not advertised product artifacts.
 
 ## Central questions
 
@@ -52,9 +47,11 @@ It is also not HC-Brain. Concepts may later be borrowed where useful, but Mosaic
 
 Those harnesses make parts of the research protocol executable; they are not a trained Mosaic model, do not demonstrate real specialist unloading/swapping on an accelerator, and do not establish a Mosaic P1 pass. The model partition architecture, training recipe, and empirical capability claims remain research subjects.
 
-### VN1 neural evidence (2026-10-26)
+### Neural handoff experiments (2026-10-26)
 
-[Recorded VN1 experiments](experiments/MOSAIC_LATENT_VN1_RESULT_20261026.md) establish a real hidden-tensor handoff between two separately loaded pretrained SmolLM2 models and a narrow task-specific learned handoff between separately executed tiny networks. The toy result beats a *truncated eight-record proxy*, but **ties the full-history control**; a 16-bit record is smaller when packed than the 32-byte toy latent. The [trained pretrained bridge pilot](experiments/MOSAIC_PRETRAINED_BRIDGE_PILOT1_20261026.md) scored **64/128**, exactly tied with both its full-history and reset controls. **Shared learned reasoning across pretrained specialists, and superiority over genuine retrieval, remain HOLD.** A new [BM25 lexical retrieval control](experiments/p1_bm25_retrieval_control.py) provides an explicit document-ranking comparator, with abstention and byte-budget accounting, but does not itself establish P1.
+[Recorded latent handoff research](experiments/MOSAIC_LATENT_VN1_RESULT_20261026.md) documents a narrow hidden-tensor exchange between separately loaded pretrained SmolLM2 models and a learned handoff between small networks. The toy experiment beat a truncated eight-record proxy but **tied its full-history control**; its nominal latent was larger than a packed 16-bit record. A separate [pretrained bridge pilot](experiments/MOSAIC_PRETRAINED_BRIDGE_PILOT1_20261026.md) scored **64/128**, tied with full-history and reset controls. These observations are specific to the reported experimental setup, not performance guarantees for another host.
+
+**Shared learned reasoning across pretrained specialists and superiority over genuine retrieval remain HOLD.** The [BM25 lexical retrieval control](experiments/p1_bm25_retrieval_control.py) adds a document-ranking comparison with abstention and byte-budget accounting; it does not itself establish a P1 pass.
 
 ### Guarded thinking-Core source on `main`
 
